@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>{{ subject }}</title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style>
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+            color: #1A1A1A !important;
+            background-color: #FFFFFF !important;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* Container */
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #FFFFFF;
+        }
+        
+        /* Header */
+        .header {
+            padding: 48px 32px 32px;
+            background-color: #FFFFFF;
+        }
+        
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin-left: -15px;
+        }
+        
+        .logo-image {
+            width: 100px;
+            height: 100px;
+            display: block;
+            flex-shrink: 0;
+        }
+        
+        .logo {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1A1A1A;
+            letter-spacing: -0.5px;
+            margin: 0;
+            text-align: left;
+        }
+        
+        .logo-text-accent {
+            color: #3B82F6;
+        }
+        
+        .date {
+            font-size: 14px;
+            color: #6B7280;
+            margin-top: 16px;
+            font-weight: 400;
+            text-align: center;
+        }
+        
+        /* Content Wrapper */
+        .content {
+            padding: 0 32px 32px;
+        }
+        
+        /* Greeting */
+        .greeting {
+            font-size: 16px;
+            color: #1A1A1A !important;
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+        
+        /* Golden Thread Card */
+        .golden-thread {
+            background-color: #FAFAFA;
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin-bottom: 32px;
+            border-left: 3px solid #3B82F6;
+        }
+        
+        .golden-thread-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .golden-thread-text {
+            font-size: 16px;
+            font-style: italic;
+            color: #1A1A1A !important;
+            line-height: 1.6;
+        }
+        
+        /* Section */
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1A1A1A !important;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #E5E7EB;
+            letter-spacing: -0.3px;
+        }
+        
+        /* Section Preface */
+        .section-preface {
+            font-size: 15px;
+            font-style: italic;
+            color: #4B5563;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            padding: 12px;
+            background-color: #F9FAFB;
+            border-radius: 6px;
+        }
+        
+        /* News Item Card */
+        .item {
+            background-color: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: box-shadow 0.2s ease;
+        }
+        
+        .item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+        
+        .item-headline {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1A1A1A !important;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        
+        .item-content {
+            font-size: 15px;
+            color: #4B5563;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        
+        .item-meta {
+            font-size: 13px;
+            color: #6B7280;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .item-meta-separator {
+            color: #D1D5DB;
+        }
+        
+        /* Surprise Section */
+        .surprise {
+            background-color: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 24px;
+            margin: 48px 0 32px;
+            text-align: center;
+        }
+        
+        .surprise-content {
+            font-size: 16px;
+            font-style: italic;
+            color: #1A1A1A !important;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+        
+        .surprise-attribution {
+            font-size: 14px;
+            color: #6B7280;
+            font-style: normal;
+        }
+        
+        /* Footer */
+        .footer {
+            border-top: 1px solid #E5E7EB;
+            padding: 32px;
+            text-align: center;
+            background-color: #FAFAFA;
+        }
+        
+        .footer-stats {
+            font-size: 13px;
+            color: #6B7280;
+            margin-bottom: 16px;
+        }
+        
+        .footer-tagline {
+            font-size: 14px;
+            color: #4B5563;
+            font-weight: 500;
+        }
+        
+        /* Links */
+        a {
+            color: #3B82F6;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Mobile Responsive */
+        @media only screen and (max-width: 600px) {
+            .header {
+                padding: 32px 16px 24px;
+            }
+            
+            .header-content {
+                gap: 12px;
+                margin-left: -10px;
+            }
+            
+            .logo-image {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .logo {
+                font-size: 22px;
+            }
+            
+            .content {
+                padding: 0 16px 24px;
+            }
+            
+            .golden-thread {
+                padding: 16px 20px;
+            }
+            
+            .section {
+                margin-bottom: 32px;
+            }
+            
+            .section-title {
+                font-size: 17px;
+                margin-bottom: 16px;
+            }
+            
+            .item {
+                padding: 16px;
+            }
+            
+            .item-headline {
+                font-size: 15px;
+            }
+            
+            .item-content {
+                font-size: 14px;
+            }
+            
+            .item-meta {
+                font-size: 12px;
+                flex-wrap: wrap;
+            }
+            
+            .surprise {
+                padding: 20px;
+                margin: 32px 0 24px;
+            }
+            
+            .footer {
+                padding: 24px 16px;
+            }
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <img src="{{ logo_url|default('https://i.imgur.com/wiSpPUC.png') }}" 
+                     alt="Fourier Forecast Logo" 
+                     class="logo-image">
+                <h1 class="logo">Ignacio's <span class="logo-text-accent">Fourier Forecast</span></h1>
+            </div>
+            <div class="date">{{ date }}</div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Greeting -->
+            {% if greeting %}
+            <div class="greeting">{{ greeting }}</div>
+            {% endif %}
+            
+            <!-- Golden Thread -->
+            {% if golden_thread %}
+            <div class="golden-thread">
+                <div class="golden-thread-label">Today's Thread</div>
+                <div class="golden-thread-text">{{ golden_thread }}</div>
+            </div>
+            {% endif %}
+            
+            <!-- Content Sections -->
+            {% for section_name, section_data in sections.items() %}
+            <div class="section">
+                <h2 class="section-title">{{ section_name|title|replace('_', ' ') }}</h2>
+                
+                {% if section_data.intro_text %}
+                <div class="section-preface">
+                    {{ section_data.intro_text }}
+                </div>
+                {% endif %}
+                
+                {% for item in section_data['items'] %}
+                <div class="item">
+                    <div class="item-headline">{{ item.headline }}</div>
+                    <div class="item-content">{{ item.summary }}</div>
+                    <div class="item-meta">
+                        <span>{{ item.source }}</span>
+                        <span class="item-meta-separator">•</span>
+                        <span>{{ item.time }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+            
+            <!-- Delightful Surprise -->
+            {% if delightful_surprise %}
+            <div class="surprise">
+                <div class="surprise-content">{{ delightful_surprise.content }}</div>
+                {% if delightful_surprise.attribution %}
+                <div class="surprise-attribution">— {{ delightful_surprise.attribution }}</div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-stats">{{ estimated_read_time }} minute read • {{ total_items }} stories</div>
+            <div class="footer-tagline">Transforming chaos into clarity, daily at 5:30 AM ET</div>
+        </div>
+    </div>
+</body>
+</html>

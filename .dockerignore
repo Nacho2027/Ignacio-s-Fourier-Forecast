@@ -1,0 +1,117 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env.*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Documentation
+*.md
+docs/
+README*
+CHANGELOG*
+LICENSE*
+
+# Logs and databases (will be mounted as volumes)
+logs/
+*.log
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Deployment and build artifacts
+deployment_reports/
+.build/
+*.tar.gz
+*.zip
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+
+# Local configuration
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Docker files (except main ones needed for build)
+docker-compose.override.yml
+docker-compose.*.yml
+Dockerfile.*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Local research and notes
+local-research/
+notes/
+scratch/

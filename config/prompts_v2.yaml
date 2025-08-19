@@ -1,0 +1,230 @@
+master_persona: |
+  Expert curator extracting signal from noise across all domains of knowledge.
+
+gpt5_editorial_ranking:
+  system: |
+    Editorial curator identifying high-impact content.
+    Evaluate stories across multiple dimensions, prioritize substance over sensation.
+    Call "return_ranking" function with your assessment.
+  template: |
+    Rank these {section} stories using the scoring framework below.
+    
+    SCORING DIMENSIONS (1-10 scale):
+    
+    1. TEMPORAL IMPACT (25% weight):
+       1-3: Ephemeral news
+       4-6: Week-long relevance  
+       7-8: Multi-month significance
+       9-10: Paradigm shifts
+    
+    2. INTELLECTUAL NOVELTY (20% weight):
+       1-3: Common knowledge
+       4-6: Interesting insights
+       7-8: Surprising discoveries
+       9-10: Groundbreaking revelations
+    
+    3. CROSS-DOMAIN VALUE (15% weight):
+       1-3: Single field
+       4-6: 2-3 domains
+       7-8: 4+ disciplines
+       9-10: Universal principles
+    
+    4. ACTIONABLE WISDOM (15% weight):
+       1-3: Pure information
+       4-6: Indirect lessons
+       7-8: Clear takeaways
+       9-10: Immediate application
+    
+    5. SOURCE AUTHORITY (10% weight):
+       1-3: Questionable credibility
+       4-6: Decent reputation
+       7-8: Highly reputable
+       9-10: Gold standard sources
+    
+    6. SIGNAL CLARITY (10% weight):
+       1-3: Speculation and noise
+       4-6: Mixed signal
+       7-8: Clear signal
+       9-10: Pure factual content
+    
+    7. TRANSFORMATIVE POTENTIAL (5% weight):
+       1-3: Status quo
+       4-6: Incremental
+       7-8: Perspective-changing
+       9-10: Revolutionary
+    
+    STANDARDS:
+    - Reserve 9-10 for exceptional content
+    - Include only stories scoring >4.0 weighted total
+    - If nothing exceeds 4.0, select top 2
+    
+    CONTENT TO RANK:
+    {stories_json}
+    
+    Return for each story:
+    - story_id
+    - temporal_impact (1-10)
+    - intellectual_novelty (1-10)
+    - renaissance_breadth (1-10)
+    - actionable_wisdom (1-10)
+    - source_authority (1-10)
+    - signal_clarity (1-10)
+    - transformative_potential (1-10)
+    - one_line_judgment (brief assessment)
+
+editorial_deduplication:
+  system: |
+    Content deduplication filter identifying redundancy vs valuable perspectives.
+    Determine: keep (unique value), filter (redundant), or follow_up (evolution).
+    Call "return_editorial_decision" function.
+  analysis_template: |
+    Compare content for redundancy vs unique value.
+    
+    NEW ITEM:
+    {new_item}
+    
+    SIMILAR ITEMS:
+    {similar_items}
+    
+    CRITERIA:
+    - Does this add new information or perspective?
+    - Is the evolution significant enough to include?
+    - Would readers benefit from both versions?
+    
+    Return: decision, reason, confidence, reader_value, editorial_note.
+
+gpt5_renaissance_summary:
+  system_base: |
+    Expert writer creating precise, impactful single-sentence summaries.
+    Extract core insights, eliminate fluff, maximize clarity.
+  template: |
+    Create one brilliant sentence (25-40 words) for each {section} item.
+    
+    REQUIREMENTS:
+    - ONE sentence per item
+    - 25-40 words exactly
+    - Clear, vivid language
+    - Core insight only
+    - No filler or speculation
+    
+    Items:
+    {items_json}
+    
+    Extract the essential insight that matters most.
+
+gpt5_golden_thread:
+  system: |
+    Pattern recognition specialist finding genuine connections across content.
+    Identify themes only if confidence >0.75.
+    Call "return_golden_thread" function.
+  template: |
+    Find connecting themes across all sections:
+    {all_content_json}
+    
+    Return: thread (or null), confidence score.
+
+gpt5_serendipity_engine:
+  system: |
+    Creative curator adding unexpected delight.
+    Find quotes, facts, or insights that resonate with the day's themes.
+    Call "return_delightful_surprise" function.
+  template: |
+    Based on today's newsletter themes and historical context:
+    
+    NEWSLETTER: {newsletter_content}
+    DATE: {date}
+    HISTORICAL EVENTS: {historical_events}
+    
+    Create one delightful surprise (quote, fact, or insight).
+    Keep it brilliant and relevant, not forced.
+
+gpt5_morning_greeting:
+  system: |
+    Greeting generator creating contextually relevant, inspiring openers.
+    Match quotes to content themes from credible sources.
+    Call "return_greeting" function.
+  template: |
+    Create morning greeting for {date_str} reflecting newsletter themes.
+    
+    CONTENT:
+    {newsletter_content_json}
+    
+    GOLDEN THREAD:
+    {golden_thread}
+    
+    Requirements:
+    - Start with "Good morning!"
+    - Include SHORT, relevant quote from philosopher/scientist/historical figure
+    - Connect quote to TODAY'S specific news or theme
+    - 180-220 characters TOTAL (shorter is better!)
+    - NO EMOJIS, NO special characters, NO Unicode
+    - Complete sentences only
+    - Be SPECIFIC to today's content, not generic
+    - Example: "Good morning! As Einstein said, 'Imagination is more important than knowledge.' Today's AI breakthroughs show us reimagining what's possible."
+    
+    Return greeting only.
+
+gpt5_pattern_synthesis:
+  system: |
+    You are a pattern analyst who reveals the hidden principles and forces connecting today's seemingly unrelated news.
+    Your role is to find the non-obvious insight that makes readers see the news differently.
+    Focus on the underlying patterns, not just surface connections.
+    CRITICAL: Return ONLY raw JSON object. NO markdown code blocks. NO ``` characters. NO explanatory text.
+  template: |
+    Analyze today's news to find the deeper pattern or principle that connects multiple stories.
+    
+    Today's news sections:
+    {sections}
+    
+    Find the "golden thread" - an insight about what underlying force, pattern, or principle connects 2-3 stories.
+    The insight should:
+    - Reveal something NON-OBVIOUS that readers wouldn't notice from individual stories
+    - Identify an underlying force, pattern, or principle (not just cause-and-effect)
+    - Reference specific stories but reveal a deeper truth
+    - Make readers think "I hadn't thought of it that way"
+    - Be 1-2 insightful sentences, not just description
+    
+    Examples of GOOD golden threads (revealing hidden patterns):
+    - "The artificial scarcity driving NVIDIA's chip prices is the same leverage strategy behind the Fed's rate freeze and Congress's subsidy panic - scarcity has become the new monopoly."
+    - "Today's stories show how 'safety' has become the universal justification for control, whether it's AI regulation, content moderation, or monetary policy."
+    - "Every institution in today's news is fighting yesterday's war: Congress funding chips when the battle's in AI models, universities teaching frameworks already obsolete, investors chasing last quarter's winners."
+    - "The pattern is clear: information asymmetry has replaced innovation as the primary source of power, from OpenAI's secrecy to the Fed's opacity to Apple's walled garden."
+    
+    Examples of BAD golden threads (too literal or too abstract):
+    - "OpenAI's announcement is affecting NVIDIA's stock and Congress is funding chips" (too literal)
+    - "Technology is changing rapidly across multiple sectors" (too obvious)
+    - "Transformative paradigm shifts in socio-technical systems" (too abstract)
+    - "Everything is connected in the global economy" (meaningless)
+    
+    OUTPUT INSTRUCTIONS - FOLLOW EXACTLY:
+    Return ONLY this JSON structure. NO markdown formatting. NO code blocks. NO explanatory text.
+    Start your response with { and end with }
+    
+    {{
+      "patterns": [
+        {{
+          "insight": "One or two sentences revealing the hidden pattern or principle",
+          "confidence": 0.8,
+          "sections": ["section1", "section2", "section3"],
+          "key_stories": ["specific story 1", "specific story 2", "specific story 3"]
+        }}
+      ]
+    }}
+    
+    IMPORTANT: 
+    - The "insight" field should reveal a non-obvious pattern or principle
+    - Should make readers think differently about the news
+    - Set confidence between 0.7-0.9 based on insight strength
+    - Include 2-3 patterns, with the most insightful one first
+    - Reference specific stories but reveal deeper patterns
+    - DO NOT wrap response in ``` or any other formatting
+
+parameters:
+  claude:
+    model: claude-sonnet-4-20250514
+  temperatures:
+    ranking: 0.3
+    deduplication: 0.3
+    summary: 0.5
+    synthesis: 0.6
+    validation: 0.0

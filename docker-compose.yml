@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  newsletter:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ignacio-fourier-forecast:latest
+    container_name: fourier-newsletter
+    restart: unless-stopped
+    
+    # Environment configuration
+    env_file:
+      - .env
+    environment:
+      - TZ=America/New_York
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    
+    # Volume mounts for persistent data
+    volumes:
+      # Persistent application data
+      - ./data:/app/data
+      - ./logs:/app/logs  
+      - ./deployment_reports:/app/deployment_reports
+      # Configuration files (read-only)
+      - ./config:/app/config:ro
+      - ./templates:/app/templates:ro
+    
+    # Resource limits for stability
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "python", "src/main.py", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    
+    # Network configuration (use host network for SMTP access)
+    network_mode: host
+
+# Optional: Create named volumes for better data management
+volumes:
+  newsletter_data:
+    driver: local
+  newsletter_logs:
+    driver: local
+
+# Optional: Create custom network (if not using host networking)
+networks:
+  newsletter_net:
+    driver: bridge

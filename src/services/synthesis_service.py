@@ -1,0 +1,615 @@
+import asyncio
+import logging
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+
+from src.services.ai_service import AIService
+from src.services.summarization_service import SectionSummaries
+from src.pipeline.content_aggregator import Section
+
+
+@dataclass
+class GoldenThread:
+    """The insight revealing hidden patterns across the day's stories"""
+    insight: str  # The non-obvious pattern or principle connecting stories
+    confidence: float
+    reasoning: str
+    connected_sections: List[Section]
+    key_stories: List[str]  # The specific stories that demonstrate the pattern
+
+    def to_newsletter_text(self) -> str:
+        """Convert to newsletter-ready text"""
+        return self.insight  # Returns the insight that makes readers think differently
+
+
+@dataclass
+class DelightfulSurprise:
+    """The perfect ending to the newsletter"""
+    content: str
+    type: str  # 'quote', 'fact', 'historical', 'question', 'connection'
+    attribution: Optional[str] = None
+    relevance_score: float = 0.0
+
+    def to_newsletter_text(self) -> str:
+        """Convert to newsletter-ready text"""
+        if self.attribution:
+            return f"{self.content}\n— {self.attribution}"
+        return self.content
+
+
+class SurpriseType(Enum):
+    """Types of delightful surprises"""
+    QUOTE = "quote"              # Perfect quote crystallizing themes
+    HISTORICAL = "historical"    # Historical parallel illuminating present
+    STATISTIC = "statistic"      # Stunning fact reframing everything
+    QUESTION = "question"        # Beautiful question lingering in mind
+    CONNECTION = "connection"    # Unexpected link between stories
+
+
+class SynthesisService:
+    """
+    Discovers golden threads and creates delightful surprises.
+
+    This service is the Renaissance mind of the newsletter, finding:
+    - The golden thread: subtle theme connecting disparate stories
+    - Cross-domain patterns: how science relates to business to art
+    - Perfect endings: quotes, facts, or questions that delight
+    - Intellectual coherence: making the day's chaos comprehensible
+    """
+
+    def __init__(self, ai_service: AIService):
+        """
+        Initialize synthesis service.
+
+        Args:
+            ai_service: AI service for pattern recognition
+        """
+        self.ai = ai_service
+
+        # Configuration
+        self.min_thread_confidence = 0.75   # Higher threshold for quality cross-disciplinary patterns
+        self.min_sections_for_thread = 2    # Minimum sections for a valid pattern
+        self.candidates_per_type = 2       # Generate candidates per surprise type
+
+        self.logger = logging.getLogger(__name__)
+
+    async def find_golden_thread(
+        self,
+        sections: Dict[str, SectionSummaries]
+    ) -> Optional[GoldenThread]:
+        """
+        Discover the golden thread connecting the day's stories.
+
+        Args:
+            sections: All summarized sections
+
+        Returns:
+            Golden thread if found with sufficient confidence
+        """
+        patterns = await self._analyze_cross_section_patterns(sections)
+        return await self._evaluate_thread_candidates(patterns, sections)
+
+    async def _analyze_cross_section_patterns(
+        self,
+        sections: Dict[str, SectionSummaries]
+    ) -> List[Dict[str, Any]]:
+        """
+        Analyze patterns across different sections.
+
+        Args:
+            sections: Summarized content
+
+        Returns:
+            List of potential patterns
+        """
+        # Provide detailed content for rich pattern analysis
+        # Include headlines AND summaries for better cross-sectional insights
+        normalized_sections = {}
+        
+        for key, value in sections.items():
+            if not value.summaries:
+                continue
+                
+            # Build detailed content for pattern detection
+            section_details = []
+            
+            # Include intro if available for context
+            if value.intro_text:
+                section_details.append(f"Overview: {value.intro_text}")
+            
+            # Include top 5 articles with full headlines and summaries
+            # This gives AI specific details like names, places, amounts
+            for i, summary in enumerate(value.summaries[:5]):
+                section_details.append(
+                    f"Article {i+1}: {summary.headline}. "
+                    f"Summary: {summary.summary_text}"
+                )
+            
+            # Join all details for comprehensive section representation
+            normalized_sections[key] = "\n".join(section_details)
+        
+        context = {
+            "sections": normalized_sections
+        }
+        self.logger.info(f"🔍 Analyzing cross-section patterns for {len(sections)} sections")
+        self.logger.debug(f"Sections being analyzed: {list(sections.keys())}")
+        
+        try:
+            # Use prompt pipeline for pattern synthesis
+            self.logger.debug("Calling AI service for pattern synthesis")
+            # Use higher token limit for complex pattern synthesis JSON response
+            resp = await self.ai.interact_with_gpt("gpt5_pattern_synthesis", context, max_tokens=8192)
+            
+            content = getattr(resp, "content", None)
+            self.logger.debug(f"AI response content type: {type(content)}")
+            
+            if isinstance(content, str) and content.strip():  # Check content is not empty
+                import json as _json
+                
+                # The AI returns valid JSON, so we just need to parse it directly
+                # No complex extraction needed - the extraction logic was actually breaking valid JSON
+                content_to_parse = content.strip()
+                
+                # Log the full response for debugging
+                self.logger.debug(f"AI response length: {len(content_to_parse)} characters")
+                if len(content_to_parse) > 1000:
+                    self.logger.debug(f"First 500 chars: {content_to_parse[:500]}")
+                    self.logger.debug(f"Last 500 chars: {content_to_parse[-500:]}")
+                else:
+                    self.logger.debug(f"Full response: {content_to_parse}")
+                
+                try:
+                    # Directly parse the JSON - the AI returns complete, valid JSON
+                    parsed = _json.loads(content_to_parse)
+                    patterns = list(parsed.get("patterns", []))
+                    self.logger.info(f"📊 Found {len(patterns)} potential patterns")
+                    
+                    # Log pattern details for debugging
+                    for i, pattern in enumerate(patterns):
+                        # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
+                        insight = pattern.get('insight') or pattern.get('connection') or pattern.get('theme', 'Unknown')
+                        confidence = pattern.get('confidence', 0)
+                        sections = pattern.get('sections', [])
+                        self.logger.debug(f"Pattern {i+1}: {insight} (confidence: {confidence:.2f}, sections: {sections})")
+                    
+                    # Filter for high-confidence patterns
+                    high_confidence = [p for p in patterns if p.get('confidence', 0) >= 0.7]
+                    if high_confidence:
+                        self.logger.info(f"✨ {len(high_confidence)} high-confidence patterns (≥0.7) available for golden thread")
+                    
+                    return patterns
+                    
+                except _json.JSONDecodeError as parse_error:
+                    # If JSON parsing fails, log detailed error information
+                    self.logger.error(f"❌ Failed to parse pattern synthesis JSON: {parse_error}")
+                    self.logger.error(f"Error at position {parse_error.pos}: {parse_error.msg}")
+                    
+                    # Show content around the error position
+                    if parse_error.pos:
+                        start = max(0, parse_error.pos - 100)
+                        end = min(len(content_to_parse), parse_error.pos + 100)
+                        self.logger.error(f"Content around error position {parse_error.pos}:")
+                        self.logger.error(f"  ...{content_to_parse[start:end]}...")
+                    
+                    # Log the raw content for debugging (truncated)
+                    self.logger.debug(f"Raw content (first 1000 chars): {content_to_parse[:1000]}")
+                    
+                    return []
+            else:
+                if content is None:
+                    self.logger.warning("⚠️ AI returned None for pattern synthesis")
+                elif not content:
+                    self.logger.warning("⚠️ AI returned empty string for pattern synthesis")
+                else:
+                    self.logger.warning(f"⚠️ Unexpected content type from AI: {type(content)}")
+                return []
+        except Exception as e:  # noqa: BLE001
+            self.logger.error(f"💥 Pattern analysis failed: {e}")
+            return []
+
+
+    async def _evaluate_thread_candidates(
+        self,
+        patterns: List[Dict[str, Any]],
+        sections: Dict[str, SectionSummaries]
+    ) -> Optional[GoldenThread]:
+        """
+        Evaluate and select best golden thread.
+
+        Args:
+            patterns: Potential patterns found
+            sections: Content for validation
+
+        Returns:
+            Best golden thread or None
+        """
+        self.logger.info(f"🧵 Evaluating {len(patterns)} thread candidates")
+        
+        best: Optional[Tuple[float, Dict[str, Any]]] = None
+        for i, p in enumerate(patterns):
+            # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
+            insight = p.get('insight') or p.get('connection') or p.get('theme', 'Unknown')
+            self.logger.debug(f"Evaluating pattern {i+1}: {insight}")
+            try:
+                strength = self._calculate_thread_strength(p, sections)
+                confidence = float(p.get("confidence", 0.0))
+                self.logger.debug(f"Pattern {i+1}: strength={strength:.3f}, confidence={confidence:.3f}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to evaluate pattern {i+1}: {e}")
+                continue
+                
+            # Require minimums
+            connected = p.get("sections") or []
+            if not isinstance(connected, list):
+                self.logger.debug(f"Pattern {i+1}: Invalid sections format: {type(connected)}")
+                continue
+                
+            if (confidence >= self.min_thread_confidence) and (len(connected) >= self.min_sections_for_thread):
+                score = (confidence + strength) / 2.0
+                self.logger.debug(f"Pattern {i+1}: Qualified with score {score:.3f}")
+                if best is None or score > best[0]:
+                    best = (score, p)
+                    self.logger.debug(f"Pattern {i+1}: New best candidate")
+            else:
+                self.logger.debug(f"Pattern {i+1}: Failed thresholds (conf: {confidence:.3f} >= {self.min_thread_confidence}, sections: {len(connected)} >= {self.min_sections_for_thread})")
+
+        if not best:
+            self.logger.warning("❌ No qualifying golden thread found")
+            return None
+
+        score, chosen = best
+        # Use 'insight' if available, then 'connection', then 'theme'
+        insight_text = chosen.get('insight') or chosen.get('connection') or chosen.get('theme', 'Unknown')
+        self.logger.info(f"✅ Selected golden thread: '{insight_text}' (score: {score:.3f})")
+        
+        sections_list = self._map_sections(chosen.get("sections") or [])
+        # Use 'key_stories' if available, otherwise fall back to 'insights' or 'keywords'
+        key_stories = chosen.get("key_stories") or chosen.get("insights") or chosen.get("keywords") or []
+        reasoning = "; ".join(key_stories) if isinstance(key_stories, list) and key_stories else insight_text
+        
+        thread = GoldenThread(
+            insight=str(insight_text),  # Use the new field name!
+            confidence=float(chosen.get("confidence", 0.0)),
+            reasoning=reasoning,
+            connected_sections=sections_list,
+            key_stories=list(key_stories) if isinstance(key_stories, list) else [],
+        )
+        
+        self.logger.debug(f"Golden thread created: {len(thread.connected_sections)} sections, {len(thread.key_stories)} key stories")
+        return thread
+
+    def _calculate_thread_strength(
+        self,
+        pattern: Dict[str, Any],
+        sections: Dict[str, SectionSummaries]
+    ) -> float:
+        """
+        Calculate strength of a potential golden thread.
+        
+        Enhanced to reward cross-sectional diversity and penalize single-domain patterns.
+        """
+        connected = pattern.get("sections") or []
+        keywords = [k.lower() for k in (pattern.get("keywords") or []) if isinstance(k, str)]
+        
+        # Calculate how many sections the pattern actually connects
+        available_sections = set(sections.keys())
+        connected_sections = set(connected).intersection(available_sections)
+        num_connected = len(connected_sections)
+        total_available = len(available_sections)
+        
+        # Coverage ratio: what proportion of available sections does this pattern connect?
+        coverage_ratio = num_connected / max(1, total_available) if total_available > 0 else 0.0
+        
+        # Diversity bonus: reward patterns that connect MORE sections
+        diversity_bonus = 0.0
+        if num_connected >= self.min_sections_for_thread:
+            # Give bonus for each additional section beyond minimum
+            # Max bonus of 0.3 for connecting 5+ sections
+            diversity_bonus = min(0.3, (num_connected - self.min_sections_for_thread) * 0.1)
+        
+        # Keyword relevance across connected sections only
+        keyword_ratio = 0.5  # Default neutral score
+        if keywords and connected_sections:
+            hits = 0
+            for section_name in connected_sections:
+                if section_name in sections:
+                    section_data = sections[section_name]
+                    # Check keywords in section's content
+                    section_text = (section_data.intro_text or "").lower()
+                    for summary in section_data.summaries[:3]:  # Check first few summaries
+                        section_text += f" {summary.headline.lower()} {summary.summary_text.lower()}"
+                    
+                    for keyword in set(keywords):
+                        if keyword in section_text:
+                            hits += 1
+                            break  # Count each section only once per keyword
+            
+            # Normalize by number of connected sections and keywords
+            keyword_ratio = hits / max(1, min(len(connected_sections), len(set(keywords))))
+        
+        # Balance penalty: penalize if pattern claims many sections but evidence is weak
+        balance_penalty = 0.0
+        if len(connected) > num_connected:  # Pattern claims sections that don't exist
+            balance_penalty = 0.1
+        
+        # Calculate final strength with emphasis on diversity
+        # Weights: 30% coverage, 30% keywords, 30% diversity, 10% penalty
+        strength = max(0.0, min(1.0, 
+            0.3 * coverage_ratio + 
+            0.3 * keyword_ratio + 
+            0.3 * diversity_bonus + 
+            0.1 * (1.0 - balance_penalty)
+        ))
+        
+        self.logger.debug(f"Pattern strength calculation: coverage={coverage_ratio:.2f}, "
+                         f"keywords={keyword_ratio:.2f}, diversity={diversity_bonus:.2f}, "
+                         f"penalty={balance_penalty:.2f}, final={strength:.2f}")
+        
+        return strength
+
+    async def create_delightful_surprise(
+        self,
+        sections: Dict[str, SectionSummaries],
+        golden_thread: Optional[GoldenThread] = None
+    ) -> DelightfulSurprise:
+        """
+        Create the perfect ending for the newsletter.
+        """
+        # Build rich AI context
+        now = datetime.now()
+        context = {
+            "themes": self._extract_key_themes(sections),
+            "sections": list(sections.keys()),
+            "golden_thread": (golden_thread.insight if golden_thread else None),
+            "date": now,
+            "day_of_week": now.weekday(),
+            "newsletter_content": self._build_newsletter_content(sections),
+            "historical_events": [],  # Placeholder; integrate real events later
+        }
+
+        # Generate candidates across all surprise types and select the best
+        candidates = await self._generate_all_surprise_candidates(context)
+
+        # Score all candidates if needed
+        scored: List[DelightfulSurprise] = []
+        for c in candidates:
+            if not c.relevance_score or c.relevance_score <= 0.0:
+                c.relevance_score = await self._score_surprise_relevance(c, sections, golden_thread)
+            scored.append(c)
+        return self._select_best_surprise(scored)
+
+    async def _generate_all_surprise_candidates(
+        self,
+        context: Dict[str, Any]
+    ) -> List[DelightfulSurprise]:
+        """Generate multiple surprise candidates across all types."""
+        tasks = []
+        
+        # Generate candidates for each surprise type
+        for _ in range(self.candidates_per_type):
+            tasks.append(asyncio.create_task(self._generate_perfect_quote(dict(context))))
+            tasks.append(asyncio.create_task(self._generate_historical_parallel(dict(context))))
+            tasks.append(asyncio.create_task(self._generate_stunning_statistic(dict(context))))
+            tasks.append(asyncio.create_task(self._generate_beautiful_question(dict(context))))
+            tasks.append(asyncio.create_task(self._generate_unexpected_connection(dict(context))))
+        
+        results: List[DelightfulSurprise] = []
+        for coro in asyncio.as_completed(tasks):
+            try:
+                results.append(await coro)
+            except Exception:  # noqa: BLE001
+                continue
+        return results
+
+    async def _generate_perfect_quote(
+        self,
+        context: Dict[str, Any]
+    ) -> DelightfulSurprise:
+        """Find a perfect quote crystallizing themes."""
+        payload = dict(context)
+        payload["type"] = "quote"
+        resp = await self.ai.generate_delightful_surprise(
+            newsletter_content=payload.get("newsletter_content", {}),
+            date=payload.get("date", datetime.now()),
+            historical_events=payload.get("historical_events", []),
+        )
+        return DelightfulSurprise(
+            content=str(resp.get("content", "")),
+            type=str(resp.get("type", "quote")),
+            attribution=resp.get("attribution") or resp.get("source"),
+            relevance_score=float(resp.get("relevance", 0.0) or 0.0),
+        )
+
+    async def _generate_historical_parallel(
+        self,
+        context: Dict[str, Any]
+    ) -> DelightfulSurprise:
+        """Find historical parallel illuminating present."""
+        payload = dict(context)
+        payload["type"] = "historical"
+        resp = await self.ai.generate_delightful_surprise(
+            newsletter_content=payload.get("newsletter_content", {}),
+            date=payload.get("date", datetime.now()),
+            historical_events=payload.get("historical_events", []),
+        )
+        return DelightfulSurprise(
+            content=str(resp.get("content", "")),
+            type=str(resp.get("type", "historical")),
+            attribution=resp.get("attribution") or resp.get("source"),
+            relevance_score=float(resp.get("relevance", 0.0) or 0.0),
+        )
+
+    async def _generate_stunning_statistic(
+        self,
+        context: Dict[str, Any]
+    ) -> DelightfulSurprise:
+        """Find statistic that reframes everything."""
+        payload = dict(context)
+        payload["type"] = "statistic"
+        resp = await self.ai.generate_delightful_surprise(
+            newsletter_content=payload.get("newsletter_content", {}),
+            date=payload.get("date", datetime.now()),
+            historical_events=payload.get("historical_events", []),
+        )
+        return DelightfulSurprise(
+            content=str(resp.get("content", "")),
+            type=str(resp.get("type", "statistic")),
+            attribution=resp.get("attribution") or resp.get("source"),
+            relevance_score=float(resp.get("relevance", 0.0) or 0.0),
+        )
+
+    async def _generate_beautiful_question(
+        self,
+        context: Dict[str, Any]
+    ) -> DelightfulSurprise:
+        """Create question that lingers in the mind."""
+        payload = dict(context)
+        payload["type"] = "question"
+        resp = await self.ai.generate_delightful_surprise(
+            newsletter_content=payload.get("newsletter_content", {}),
+            date=payload.get("date", datetime.now()),
+            historical_events=payload.get("historical_events", []),
+        )
+        return DelightfulSurprise(
+            content=str(resp.get("content", "")),
+            type=str(resp.get("type", "question")),
+            attribution=resp.get("attribution") or resp.get("source"),
+            relevance_score=float(resp.get("relevance", 0.0) or 0.0),
+        )
+
+    async def _generate_unexpected_connection(
+        self,
+        context: Dict[str, Any]
+    ) -> DelightfulSurprise:
+        """Find unexpected connection between stories."""
+        payload = dict(context)
+        payload["type"] = "connection"
+        resp = await self.ai.generate_delightful_surprise(
+            newsletter_content=payload.get("newsletter_content", {}),
+            date=payload.get("date", datetime.now()),
+            historical_events=payload.get("historical_events", []),
+        )
+        return DelightfulSurprise(
+            content=str(resp.get("content", "")),
+            type=str(resp.get("type", "connection")),
+            attribution=resp.get("attribution") or resp.get("source"),
+            relevance_score=float(resp.get("relevance", 0.0) or 0.0),
+        )
+
+
+    async def _score_surprise_relevance(
+        self,
+        surprise: DelightfulSurprise,
+        sections: Dict[str, SectionSummaries],
+        golden_thread: Optional[GoldenThread]
+    ) -> float:
+        """Score how relevant a surprise is to content (0-1)."""
+        # Prefer AI-assigned score when provided
+        if isinstance(surprise.relevance_score, (int, float)) and surprise.relevance_score > 0.0:
+            return float(surprise.relevance_score)
+
+        score = 0.5
+        # Simple heuristic boost: overlap of words with themes and thread
+        text = (surprise.content or "").lower()
+        themes = [t.lower() for t in self._extract_key_themes(sections)]
+        overlap = sum(1 for t in set(themes) if t and (t in text))
+        if themes:
+            score = 0.3 + 0.4 * (overlap / min(len(set(themes)), 10))
+        if golden_thread and golden_thread.insight:
+            if any(tok in text for tok in golden_thread.insight.lower().split()):
+                score = min(1.0, score + 0.2)
+        return max(0.0, min(1.0, score))
+
+    def _select_best_surprise(
+        self,
+        candidates: List[DelightfulSurprise]
+    ) -> DelightfulSurprise:
+        """Select best surprise from candidates."""
+        if not candidates:
+            return DelightfulSurprise(content="", type="quote", relevance_score=0.0)
+        return max(candidates, key=lambda c: float(c.relevance_score or 0.0))
+
+    async def synthesize_complete(
+        self,
+        sections: Dict[str, SectionSummaries]
+    ) -> Tuple[Optional[GoldenThread], DelightfulSurprise]:
+        """
+        Complete synthesis: find thread and create surprise.
+        """
+        thread = await self.find_golden_thread(sections)
+        surprise = await self.create_delightful_surprise(sections, thread)
+        return thread, surprise
+
+    def _extract_key_themes(
+        self,
+        sections: Dict[str, SectionSummaries]
+    ) -> List[str]:
+        """
+        Extract key themes from all content.
+        """
+        themes: List[str] = []
+        for sec in sections.values():
+            for s in sec.summaries:
+                if s.headline:
+                    themes.append(s.headline)
+                if s.summary_text:
+                    themes.append(s.summary_text)
+        return themes
+
+    def _build_newsletter_content(
+        self,
+        sections: Dict[str, SectionSummaries]
+    ) -> Dict[str, Any]:
+        """Build a structured dict representing newsletter content for AI prompts."""
+        output: Dict[str, Any] = {}
+        for section_key, sec in sections.items():
+            output[section_key] = {
+                "title": sec.title,
+                "intro": sec.intro_text,
+                "items": [
+                    {
+                        "headline": s.headline,
+                        "summary": s.summary_text,
+                        "source": s.source,
+                        "url": s.source_url,
+                        "time_ago": s.time_ago,
+                    }
+                    for s in sec.summaries
+                ],
+            }
+        return output
+
+    async def validate_synthesis(
+        self,
+        golden_thread: Optional[GoldenThread],
+        surprise: DelightfulSurprise,
+        sections: Dict[str, SectionSummaries]
+    ) -> bool:
+        """
+        Validate synthesis quality and relevance.
+        """
+        if surprise.relevance_score < 0.7:
+            return False
+        if golden_thread is not None and golden_thread.confidence < self.min_thread_confidence:
+            return False
+        return True
+
+    def _map_sections(self, names: List[str]) -> List[Section]:
+        """Map string section names to Section enum-like constants when possible."""
+        # Section in this project is a class with string constants, not Enum subclass.
+        # We will map to those constants by equality.
+        mapping = {v: v for k, v in vars(Section).items() if not k.startswith("_")}
+        out: List[Section] = []
+        for n in names:
+            if isinstance(n, str) and n in mapping:
+                out.append(mapping[n])
+        return out
+
+
+class SynthesisError(Exception):
+    """Custom exception for synthesis failures"""
+    pass
+
+

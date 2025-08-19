@@ -1,0 +1,40 @@
+IGNACIO'S FOURIER FORECAST
+{{ date }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ greeting }}
+
+{% if golden_thread %}
+TODAY'S THREAD
+──────────────
+{{ golden_thread }}
+
+{% endif %}
+{% for section_name, section_data in sections.items() %}
+{{ section_name|upper|replace('_', ' ') }}
+──────────────────────────────────────────
+{% if section_data.intro_text %}
+{{ section_data.intro_text }}
+
+{% endif %}
+{% for item in section_data['items'] %}
+▸ {{ item.headline }}
+  {{ item.summary }}
+  [{{ item.source }} • {{ item.time }}]
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+{% if delightful_surprise %}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ delightful_surprise.content }}
+{% if delightful_surprise.attribution %}— {{ delightful_surprise.attribution }}{% endif %}
+
+{% endif %}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ estimated_read_time }} minute read • {{ total_items }} stories
+Transforming chaos into clarity, daily at 5:30 AM ET

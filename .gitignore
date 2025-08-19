@@ -1,0 +1,243 @@
+# Internal documentation and project specs
+LAW.txt
+VISION.txt
+CLAUDE.md
+DOCKER.md
+TODO.md
+NOTES.md
+*_internal.md
+*_private.md
+
+# Development tool configurations
+.cursor/
+.vscode/
+.idea/
+*.code-workspace
+vibe-tools.config.json
+.repomix-output.txt
+repomix.config.json
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.env
+env/
+venv/
+.venv/
+
+# API Keys and credentials
+*_api_key*
+*_secret*
+credentials.json
+secrets.json
+config/secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+.cache
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+test_*.db
+
+# Log files
+logs/
+*.log
+log/
+*.out
+*.err
+
+# Test files and outputs
+test_*.py
+test_*.txt
+test_*.json
+test_output/
+test_results/
+*_test_results_*.json
+full_test_output.txt
+validation_output.txt
+pytest.ini
+conftest.py
+
+# Local research and documentation
+local-research/
+research/
+notes/
+scratch/
+drafts/
+
+# Deployment and validation reports
+deployment_reports/
+validation_reports/
+reports/
+
+# Cache and temporary files
+cache/
+.cache/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-*
+.cursor/
+*.code-workspace
+
+# Docker volumes and local data
+data/
+volumes/
+docker-data/
+
+# Metrics and monitoring
+metrics/
+monitoring/
+analytics/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Coverage reports
+coverage/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Documentation build files
+docs/_build/
+docs/.doctrees/
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+*.pyo
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Backup files
+*.backup
+*.old
+*.orig
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Dummy and test databases
+dummy.db
+test_*.db
+*_cache.db
+
+# Configuration backups
+*.yaml.backup
+*.yml.backup
+*.json.backup
+*_backup_*
+
+# Tool configurations that might contain sensitive data
+vibe-tools.config.json
+
+# Specific project files to ignore
+llmlayer_test_results_*.json
+validation_*.json
+
+# Docker override files (might contain local settings)
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Any files with 'private' or 'secret' in the name
+*private*
+*secret*
+*confidential*
+
+# Terraform state files (if applicable)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# AWS credentials (if applicable)
+.aws/
+
+# Google Cloud credentials (if applicable)
+.gcloud/
+gcloud-key.json
+
+# Azure credentials (if applicable)
+.azure/
+
+# Newsletter outputs (might contain test data)
+demo_newsletter.html
+test_newsletter.html
+newsletter_output/
