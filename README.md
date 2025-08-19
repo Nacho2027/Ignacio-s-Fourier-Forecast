@@ -49,8 +49,8 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/fourier-forecast.git
-   cd fourier-forecast
+   git clone https://github.com/Nacho2027/Ignacio-s-Fourier-Forecast.git
+   cd Ignacio-s-Fourier-Forecast
    ```
 
 2. **Set up environment variables**
@@ -120,23 +120,24 @@ fourier-forecast/
 ├── templates/
 │   ├── newsletter.html.j2                # Responsive HTML email template
 │   └── newsletter_plain.j2               # Plain text email fallback
-├── assets/                               # Static assets (e.g., logo)
-│   └── fourier_forecast_logo_butterfly.png
-├── data/                                 # Persistent SQLite databases & cache
-├── docker/                               # Docker-related files
-│   └── entrypoint.sh                     # Docker container entrypoint
-├── metrics/                              # Directory for collected metrics
+├── assets/                               # Static assets (logos, images)
+│   ├── fourier_forecast_logo_butterfly.png # Main logo (Lorenz attractor)
+│   └── logo_base64.txt                   # Base64 encoded logo for email embedding
 ├── scripts/                              # Deployment and utility scripts
 │   └── deploy.sh                         # Systemd deployment script
-├── tests/                                # Comprehensive test suite
+├── docker/                               # Docker-related files
+│   └── entrypoint.sh                     # Docker container entrypoint
+├── .dockerignore                         # Docker ignore patterns
 ├── .env.example                          # Environment variables template
+├── .gitignore                            # Git ignore patterns
 ├── Dockerfile                            # Docker build instructions
 ├── docker-compose.yml                    # Docker Compose configuration
 ├── docker-run.sh                         # Docker convenience script
+├── setup-docker.sh                       # Docker environment setup
 ├── run                                   # Simple script to run main.py
 ├── requirements.txt                      # Python dependencies
-├── LICENSE                               # Project license
-└── README.md                             # Project overview
+├── LICENSE                               # MIT License
+└── README.md                             # Project overview and documentation
 ```
 
 ## **Data Flow & Pipeline Stages**
