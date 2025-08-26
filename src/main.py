@@ -264,6 +264,16 @@ class MainPipeline:
         if not self.services:
             await self.initialize_services()
 
+        # Clear old cache entries to prevent cross-day duplicates
+        # Only keep items from last 3 days for deduplication purposes
+        cache_service = self.services.get('cache')
+        if cache_service:
+            try:
+                removed = await cache_service.cleanup(days=3)
+                logging.info(f"Cleared {removed} old cache entries before newsletter generation")
+            except Exception as e:
+                logging.warning(f"Failed to cleanup old cache entries: {e}")
+
         # Stage 1: Fetch
         start = asyncio.get_event_loop().time()
         raw_content = await self._fetch_content()

@@ -505,12 +505,12 @@ class ContentAggregator:
                 search_type="news"
             )
             
-            # Fetch Cornell news
+            # Fetch Cornell news - increase limit and broaden query
             cornell_result = await self.llmlayer.search(
-                query=f"What are the latest news stories from Cornell University about campus developments, research, or student life from this week of {this_week}?",
-                max_results=5,  # Get 5 Cornell articles
-                domains=["news.cornell.edu", "cornellsun.com", "cornell.edu"],
-                recency="week",
+                query=f"What are the latest news stories from Cornell University about campus developments, research, student life, faculty achievements, or community events from the past two weeks?",
+                max_results=10,  # Get 10 Cornell articles for better selection
+                domains=["news.cornell.edu", "cornellsun.com", "cornell.edu", "as.cornell.edu", "engineering.cornell.edu"],
+                recency="month",  # Use month to ensure we get enough Cornell content
                 search_type="news"
             )
             
@@ -537,7 +537,7 @@ class ContentAggregator:
                 ["miamiherald.com", "news.cornell.edu", "cornellsun.com"],
                 "Local"
             )
-            items = self._filter_items(items_validated, max_age_days=7)  # Local news: Miami Herald (daily) + Cornell (weekly cycle)
+            items = self._filter_items(items_validated, max_age_days=14)  # Extended to 14 days to ensure Cornell coverage
             self.logger.info("Local: %d items after validation and filtering from %d raw", len(items), len(items_raw))
             return FetchResult("llmlayer", Section.LOCAL, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001

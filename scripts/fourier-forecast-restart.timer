@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily restart of Fourier Forecast service before newsletter generation
+Requires=fourier-forecast-restart.service
+
+[Timer]
+# Restart daily at 5:25 AM ET (5 minutes before newsletter generation)
+OnCalendar=*-*-* 05:25:00 America/New_York
+Persistent=true
+
+[Install]
+WantedBy=timers.target

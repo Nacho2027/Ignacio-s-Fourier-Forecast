@@ -123,7 +123,12 @@ class RSSService:
         Fetch and parse an RSS feed.
         """
         cache_key = self._generate_cache_key(feed_url)
-        if cache_key in self._cache:
+        # Don't use cache for daily readings to ensure fresh content
+        if "usccb" in feed_url or "catholic" in feed_url:
+            if cache_key in self._cache:
+                del self._cache[cache_key]
+                self.logger.debug(f"Cleared cache for spiritual feed: {feed_url}")
+        elif cache_key in self._cache:
             return self._cache[cache_key]
 
         last_error: Optional[Exception] = None
@@ -162,8 +167,17 @@ class RSSService:
         """Get Catholic daily readings for a specific date."""
         now_et = datetime.now(EASTERN_TZ)
         target_date = (date.astimezone(EASTERN_TZ) if date and date.tzinfo else (date or now_et)).date()
-        cache_key = target_date.isoformat()
+        
+        # Clear stale cache entries (anything not from today)
+        today_key = target_date.isoformat()
+        keys_to_remove = [k for k in self._readings_cache.keys() if k != today_key]
+        for key in keys_to_remove:
+            del self._readings_cache[key]
+            self.logger.debug(f"Cleared stale readings cache for {key}")
+        
+        cache_key = today_key
         if cache_key in self._readings_cache:
+            self.logger.debug(f"Returning cached readings for {cache_key}")
             return self._readings_cache[cache_key]
 
         items = await self.fetch_configured_feed("usccb_daily")

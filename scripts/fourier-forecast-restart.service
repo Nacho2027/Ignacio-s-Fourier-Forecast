@@ -1,0 +1,13 @@
+[Unit]
+Description=Restart Fourier Forecast service
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/systemctl restart fourier-forecast.service
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
