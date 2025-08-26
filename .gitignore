@@ -33,6 +33,19 @@ credentials.json
 secrets.json
 config/secrets/
 
+# RSA/SSH Keys and certificates
+*.pem
+*.key
+*.ppk
+id_rsa
+id_rsa.pub
+id_dsa
+id_dsa.pub
+*.crt
+*.cer
+*.p12
+*.pfx
+
 # Python
 __pycache__/
 *.py[cod]
