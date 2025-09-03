@@ -186,17 +186,27 @@ class SemanticScholarService:
         # API limit is 100 results per request
         api_limit = min(max_results, 100)
         
-        # Distribute results across queries for diversity
-        papers_per_query = max(10, max_results // len(queries))
-        
-        # Create search tasks for all queries
-        tasks = []
-        for query in queries:
-            query_limit = min(papers_per_query, api_limit)
+        # Handle citation velocity mode (empty query)
+        if len(queries) == 1 and queries[0] == "":
+            # Citation velocity mode - get more papers and let velocity sorting work
+            self.logger.info("Using citation velocity mode - fetching trending papers")
+            query_limit = min(100, max_results * 2)  # Get 2x more to filter by velocity
             task = self._search_single_query_async(
-                session, query, date_range, min_citations, query_limit
+                session, "", date_range, 0, query_limit  # Lower min_citations for velocity mode
             )
-            tasks.append(task)
+            tasks = [task]
+        else:
+            # Legacy mode - distribute results across queries for diversity
+            papers_per_query = max(10, max_results // len(queries))
+            
+            # Create search tasks for all queries
+            tasks = []
+            for query in queries:
+                query_limit = min(papers_per_query, api_limit)
+                task = self._search_single_query_async(
+                    session, query, date_range, min_citations, query_limit
+                )
+                tasks.append(task)
         
         # Execute searches with limited concurrency to respect rate limits
         # Process 2 queries at a time to avoid overwhelming the API
@@ -254,17 +264,18 @@ class SemanticScholarService:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Search for a single query with proper rate limiting and retry logic.
+        Search using recency and impact, not keywords.
+        Uses empty query to get ALL recent papers, then sorts by citation velocity.
         
         Args:
             session: aiohttp ClientSession to use
-            query: Search query string
+            query: Search query string (empty for velocity mode)
             date_range: Date range in YYYY-MM-DD:YYYY-MM-DD format
             min_citations: Minimum citation count
             limit: Maximum results to return
             
         Returns:
-            List of formatted paper dictionaries
+            List of formatted paper dictionaries sorted by citation velocity
         """
         papers: List[Dict[str, Any]] = []
         
@@ -274,14 +285,24 @@ class SemanticScholarService:
                 if attempt == 0:
                     await asyncio.sleep(0.5)  # Small initial delay
                 
-                # Build query parameters
+                # Build query parameters - use broad query for velocity mode
+                if query == "" or not query:
+                    # Citation velocity mode - use very broad terms to get diverse papers
+                    actual_limit = str(min(limit * 3, 100))  # Get 3x more, max 100
+                    self.logger.info(f"Using citation velocity mode - fetching {actual_limit} papers")
+                    # Use broad academic terms for discovery
+                    query = "science OR research OR study OR analysis OR investigation"
+                else:
+                    # Legacy mode with specific query
+                    actual_limit = str(limit)
+                
                 params = {
-                    "query": query,
+                    "query": query,  # Never send empty query - API doesn't support it
                     "fields": ",".join(self.paper_fields),
                     "publicationDateOrYear": date_range,
                     "minCitationCount": str(min_citations),
-                    "limit": str(limit),
-                    "fieldsOfStudy": "Computer Science,Mathematics,Engineering,Physics,Biology,Chemistry,Medicine"
+                    "limit": actual_limit,
+                    "fieldsOfStudy": "Computer Science,Mathematics,Engineering,Physics,Biology,Chemistry,Medicine,Economics"
                 }
                 
                 self.logger.debug(
@@ -321,8 +342,44 @@ class SemanticScholarService:
                     if data and 'data' in data and isinstance(data['data'], list):
                         for paper_data in data['data']:
                             formatted = self._format_paper(paper_data)
-                            if formatted and self._is_quality_paper(formatted):
-                                papers.append(formatted)
+                            if formatted:
+                                # Calculate citation velocity for trending detection
+                                published_date = formatted.get('published_date')
+                                if published_date:
+                                    try:
+                                        # Ensure published_date is timezone-aware
+                                        if published_date.tzinfo is None:
+                                            published_date = published_date.replace(tzinfo=timezone.utc)
+                                        
+                                        days_old = (datetime.now(timezone.utc) - published_date).days
+                                        days_old = max(days_old, 1)  # Avoid division by zero
+                                        
+                                        citations = formatted.get('citation_count', 0)
+                                        formatted['citation_velocity'] = citations / days_old
+                                        formatted['days_old'] = days_old
+                                    except Exception as e:
+                                        self.logger.debug(f"Error calculating velocity: {e}")
+                                        formatted['citation_velocity'] = 0
+                                        formatted['days_old'] = 999
+                                else:
+                                    formatted['citation_velocity'] = 0
+                                    formatted['days_old'] = 999
+                                
+                                # Add paper if it meets basic quality criteria
+                                if self._is_quality_paper(formatted):
+                                    papers.append(formatted)
+                        
+                        # Sort by citation velocity if using empty query
+                        if query == "" or not query:
+                            papers.sort(key=lambda p: p.get('citation_velocity', 0), reverse=True)
+                            
+                            # Log top velocities for debugging
+                            if papers:
+                                top_velocities = [(p.get('citation_velocity', 0), p.get('headline', 'Unknown')) for p in papers[:5]]
+                                self.logger.info(f"Top citation velocities: {[(f'{v:.2f}', t[:50]) for v, t in top_velocities]}")
+                            
+                            # Return only top papers by velocity
+                            papers = papers[:limit]
                         
                         if papers:
                             self.logger.info(
@@ -546,7 +603,9 @@ class SemanticScholarService:
     
     def _calculate_quality_score(self, paper: Dict[str, Any]) -> float:
         """
-        Calculate a quality score for ranking papers.
+        Calculate paper quality score with emphasis on citation velocity.
+        
+        Prioritizes papers that are gaining citations rapidly (trending).
         
         Args:
             paper: Formatted paper dictionary
@@ -556,32 +615,46 @@ class SemanticScholarService:
         """
         score = 0.0
         
-        # Citation impact (up to 40 points)
+        # Citation velocity is the PRIMARY factor (0-50 points)
+        velocity = paper.get('citation_velocity', 0)
+        if velocity > 10:  # >10 citations/day is exceptional
+            score += 50
+        elif velocity > 5:  # >5 citations/day is excellent
+            score += 40
+        elif velocity > 2:  # >2 citations/day is very good
+            score += 30
+        elif velocity > 1:  # >1 citation/day is good
+            score += 20
+        elif velocity > 0.5:  # >0.5 citations/day is decent
+            score += 10
+        elif velocity > 0.1:  # >0.1 citations/day is notable
+            score += 5
+        
+        # Recency bonus (0-20 points)
+        days_old = paper.get('days_old', 999)
+        if days_old <= 3:
+            score += 20
+        elif days_old <= 7:
+            score += 15
+        elif days_old <= 14:
+            score += 10
+        elif days_old <= 30:
+            score += 5
+        
+        # Absolute citation count still matters (0-20 points)
         citations = paper.get('citation_count', 0)
+        if citations >= 100:
+            score += 20
+        elif citations >= 50:
+            score += 15
+        elif citations >= 20:
+            score += 10
+        elif citations >= 10:
+            score += 5
+        
+        # Influential citations (0-10 points)
         influential = paper.get('influential_citation_count', 0)
-        
-        if citations > 0:
-            import math
-            # Logarithmic scale for citations
-            citation_score = min(30, math.log10(citations + 1) * 10)
-            influential_score = min(10, influential * 2)
-            score += citation_score + influential_score
-        
-        # Recency (up to 20 points)
-        try:
-            pub_date = paper.get('published_date')
-            if isinstance(pub_date, datetime):
-                days_old = (datetime.now(timezone.utc) - pub_date.replace(tzinfo=timezone.utc)).days
-                if days_old < 7:
-                    score += 20
-                elif days_old < 30:
-                    score += 15
-                elif days_old < 90:
-                    score += 10
-                elif days_old < 365:
-                    score += 5
-        except Exception:
-            pass
+        score += min(influential * 2, 10)
         
         # Content quality (up to 20 points)
         abstract = paper.get('abstract', '')

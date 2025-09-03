@@ -313,6 +313,7 @@ This project is powered by several excellent services and APIs:
 - **Jinja2** - Template engine for email generation
 - **Docker** - Containerization for deployment
 
+
 ### Inspiration
 - Inspired by Renaissance polymaths and the mathematical elegance of Fourier transforms
 - Logo: Lorenz attractor representing the discovery of order within chaos

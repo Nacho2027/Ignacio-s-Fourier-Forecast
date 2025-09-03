@@ -71,7 +71,7 @@ class LLMLayerService:
         self.client = LLMLayerClient(api_key=self.api_key)
         
         # Use Groq OpenAI GPT OSS 20B - cost-effective model for LLM layer operations
-        self.model = "groq/openai-gpt-oss-20b"
+        self.model = "groq/openai-gpt-oss-120b"
         
         # Configuration
         self.timeout = 120  # Increased timeout for LLM API calls to prevent failures

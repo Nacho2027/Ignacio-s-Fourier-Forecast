@@ -351,8 +351,16 @@ class ContentAggregator:
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
             result = await self.llmlayer.search(
-                query=f"What are the important business and market developments from {today} today from Wall Street Journal and Axios? Focus on major market moves, M&A deals over $100M, venture capital mega-deals, IPOs, and Federal Reserve decisions happening on {today}",
-                max_results=8,  # Fetch 8, then validate and rank to best 2-4
+                query=(
+                    f"What are the important business and market developments from {today} today "
+                    f"SPECIFICALLY from Wall Street Journal (wsj.com) and Axios (axios.com)? "
+                    f"ONLY include articles that are DIRECTLY from wsj.com or axios.com domains. "
+                    f"Focus on major market moves, M&A deals over $100M, venture capital mega-deals, "
+                    f"IPOs, and Federal Reserve decisions happening on {today}. "
+                    f"DO NOT include articles from SeekingAlpha, CNBC, Bloomberg, BusinessToday, "
+                    f"MarketWatch, Forbes, or any other business publications."
+                ),
+                max_results=12,  # Increase to get more WSJ/Axios after filtering
                 domains=["wsj.com", "axios.com"],  # Now properly used via domain_filter
                 recency="day",
                 search_type="news"  # Use news search type for business news
@@ -464,8 +472,17 @@ class ContentAggregator:
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
             result = await self.llmlayer.search(
-                query=f"What major US federal political developments happened on {today} today according to Associated Press? Focus on Congressional legislation, Supreme Court decisions, executive orders, and White House policy announcements from {today}",
-                max_results=10,  # Fetch 10, then validate and rank to best 1-2
+                query=(
+                    f"What major US federal POLITICAL developments happened on {today} today "
+                    f"according to Associated Press (apnews.com)? "
+                    f"Focus EXCLUSIVELY on: Congressional votes, bills passed or blocked, "
+                    f"Supreme Court decisions, Presidential executive orders, Cabinet appointments, "
+                    f"White House policy announcements, federal agency rulings. "
+                    f"EXCLUDE ALL: entertainment, movies, TV shows, cultural events, festivals, "
+                    f"celebrity news, sports, obituaries, human interest stories. "
+                    f"ONLY hard political news from apnews.com."
+                ),
+                max_results=15,  # Increase to find more political content
                 domains=["apnews.com"],  # Now properly used via domain_filter
                 recency="day",
                 search_type="news"  # Use news search type for political news
@@ -787,22 +804,14 @@ class ContentAggregator:
         
         self.logger.info(f"Fetching {arxiv_count} from ArXiv, {semantic_count} from Semantic Scholar")
         
-        # Prepare search queries based on VISION.txt interests
-        search_queries = [
-            "artificial intelligence transformer",
-            "machine learning optimization",
-            "quantum computing algorithms",
-            "statistical mechanics physics",
-            "information theory cryptography",
-            "neural networks deep learning",
-            "probability theory statistics",
-            "signal processing systems"
-        ]
+        # Use empty query for citation velocity mode - gets ALL trending papers
+        # This will fetch papers sorted by how fast they're gaining citations
+        search_queries = [""]  # Empty query triggers velocity-based discovery
         
         # Fetch from both sources in parallel
         tasks = [
             self._fetch_arxiv_subset(arxiv_count),
-            self.semantic_scholar.search_papers(  # Uses async wrapper
+            self.semantic_scholar.search_papers(  # This is already an async function
                 queries=search_queries,
                 max_results=semantic_count,
                 min_citations=5,
@@ -908,7 +917,9 @@ class ContentAggregator:
                     "stat.ML", "stat.TH", "math.PR", "math.ST",  # Probability/Statistics
                     "physics.app-ph", "eess.SP", "eess.SY",  # Applied Physics/EE
                     "cs.CR", "cs.IT",  # Information theory/Crypto
-                    "quant-ph", "cond-mat.stat-mech"  # Quantum/Statistical mechanics
+                    "quant-ph", "cond-mat.stat-mech",  # Quantum/Statistical mechanics
+                    "q-fin.CP", "q-fin.PM", "q-fin.RM", "q-fin.ST",  # Quantitative Finance
+                    "econ.TH", "econ.EM"  # Economics Theory & Econometrics
                 ]
                 # Increased from 3 to 7 days for better date diversity
                 # This prevents all papers from clustering around "3 days ago"
