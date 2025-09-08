@@ -230,17 +230,35 @@ class EmailCompiler:
         golden_thread: Optional[GoldenThread] = None,
         highlight: Optional[str] = None,
     ) -> str:
-        """Generate compelling subject line."""
-        date_str = date.strftime("%B %d, %Y")
-        base = f"Ignacio's Fourier Forecast — {date_str}"
+        """Generate compelling 3-5 word subject line."""
+        # If a highlight is provided, use it (but truncate to 3-5 words)
         if highlight:
-            return f"{base}: {highlight}"
+            words = highlight.split()[:5]
+            return " ".join(words)
+        
+        # If golden thread exists, create subject from it
         if golden_thread:
             # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
             hint = getattr(golden_thread, 'insight', None) or getattr(golden_thread, 'connection', None) or getattr(golden_thread, 'theme', None)
             if hint:
-                return f"{base} • {hint}"
-        return base
+                # Take first 3-5 words of the golden thread
+                words = hint.split()[:5]
+                if len(words) >= 3:
+                    return " ".join(words)
+        
+        # Default subjects based on common themes (3-5 words)
+        default_subjects = [
+            "Markets Rally Today",
+            "Tech Breakthrough News",
+            "Fed Decision Looms",
+            "AI News Today",
+            "Breaking Global Updates"
+        ]
+        
+        # Use date to pick a default (rotate through them)
+        import hashlib
+        date_hash = int(hashlib.md5(str(date).encode()).hexdigest()[:8], 16)
+        return default_subjects[date_hash % len(default_subjects)]
 
     def _generate_preview_text(
         self,

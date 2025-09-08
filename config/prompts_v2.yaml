@@ -140,8 +140,8 @@ gpt5_serendipity_engine:
 
 gpt5_morning_greeting:
   system: |
-    Greeting generator creating contextually relevant, inspiring openers.
-    Match quotes to content themes from credible sources.
+    Creative greeting generator connecting today's news themes in engaging ways.
+    Create varied, contextually relevant openers that spark curiosity.
     Call "return_greeting" function.
   template: |
     Create morning greeting for {date_str} reflecting newsletter themes.
@@ -152,15 +152,23 @@ gpt5_morning_greeting:
     GOLDEN THREAD:
     {golden_thread}
     
+    Create a greeting that connects to today's specific news. Be creative and vary your approach.
+    
+    Examples of different greeting styles (but create your own unique greeting):
+    - "Good morning! As Feynman observed, 'Study hard what interests you most.' Today's quantum computing advances..."
+    - "Good morning! Today's convergence of AI and healthcare reveals a profound shift in how we approach human wellness."
+    - "Good morning! What connects today's chip shortage to Renaissance patronage? Both show how scarcity drives innovation."
+    - "Good morning! History rhymes: the 1960s space race transformed computing, today's AI race transforms everything."
+    - "Good morning! The paradox emerges: as systems grow more complex, solutions become surprisingly simple."
+    - "Good morning! Three unrelated stories today share one truth: infrastructure determines possibility."
+    
     Requirements:
     - Start with "Good morning!"
-    - Include SHORT, relevant quote from philosopher/scientist/historical figure
-    - Connect quote to TODAY'S specific news or theme
-    - 180-220 characters TOTAL (shorter is better!)
+    - 180-220 characters TOTAL
     - NO EMOJIS, NO special characters, NO Unicode
-    - Complete sentences only
-    - Be SPECIFIC to today's content, not generic
-    - Example: "Good morning! As Einstein said, 'Imagination is more important than knowledge.' Today's AI breakthroughs show us reimagining what's possible."
+    - Be SPECIFIC to today's actual content
+    - Create fresh, varied greetings - avoid repetitive patterns
+    - Connect directly to the newsletter's themes
     
     Return greeting only.
 

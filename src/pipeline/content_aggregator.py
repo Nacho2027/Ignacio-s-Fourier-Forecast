@@ -301,7 +301,7 @@ class ContentAggregator:
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
             result = await self.llmlayer.search(
-                query=f"What are the most important breaking news stories from {today} today from Associated Press and Reuters? Focus on major global events, conflicts, disasters, and urgent developments happening on {today}",
+                query=f"What are the most important breaking news stories from {today} ONLY from Associated Press (apnews.com) and Reuters (reuters.com) in ENGLISH? Exclude all Asian, Indian, Chinese, or non-English sources. Focus on major US and global events happening on {today}. NOT from other news sites.",
                 max_results=20,  # Fetch 20, then validate and rank to best 3-5
                 domains=["apnews.com", "reuters.com"],  # Now properly used via domain_filter
                 recency="day",
@@ -333,6 +333,41 @@ class ContentAggregator:
             items_validated = self._validate_sources(items_raw, ["apnews.com", "reuters.com"], "Breaking News")
             items = self._filter_items(items_validated, max_age_days=1)  # Breaking news must be very recent
             self.logger.info("Breaking news: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            
+            # If too few items after filtering, try again with stricter query
+            if len(items) < 3:
+                self.logger.warning(f"Breaking news: Only {len(items)} items after filtering, retrying with stricter query")
+                retry_result = await self.llmlayer.search(
+                    query=f"Latest breaking news {today} STRICTLY from apnews.com OR reuters.com ONLY. US and UK news in English only. No other sources.",
+                    max_results=15,
+                    domains=["apnews.com", "reuters.com"],
+                    recency="day",
+                    search_type="news"
+                )
+                
+                retry_items_raw = [
+                    {
+                        "headline": c.title,
+                        "url": c.url,
+                        "content": c.snippet,
+                        "source": c.source_name,
+                        "published": (c.published_date.isoformat() if c.published_date else None),
+                    }
+                    for c in retry_result.citations
+                ]
+                
+                # Deduplicate by URL
+                existing_urls = {item["url"] for item in items}
+                for retry_item in retry_items_raw:
+                    if retry_item["url"] not in existing_urls:
+                        items_raw.append(retry_item)
+                        existing_urls.add(retry_item["url"])
+                
+                # Re-filter combined items
+                items_validated = self._validate_sources(items_raw, ["apnews.com", "reuters.com"], "Breaking News")
+                items = self._filter_items(items_validated, max_age_days=1)
+                self.logger.info(f"Breaking news: After retry, {len(items)} final items from {len(items_raw)} total")
+            
             return FetchResult(
                 source="llmlayer",
                 section=Section.BREAKING_NEWS,
@@ -640,6 +675,39 @@ class ContentAggregator:
             self.logger.error(f"Miscellaneous: Error during fetch: {e}", exc_info=True)
             return FetchResult("llmlayer", Section.MISCELLANEOUS, [], asyncio.get_event_loop().time() - start, error=str(e))
 
+    def _expand_scripture_reference(self, reference: str) -> str:
+        """Expand scripture abbreviations to full book names."""
+        abbreviations = {
+            # Old Testament
+            'Gn': 'Genesis', 'Ex': 'Exodus', 'Lv': 'Leviticus', 'Nm': 'Numbers', 'Dt': 'Deuteronomy',
+            'Jos': 'Joshua', 'Jgs': 'Judges', 'Ru': 'Ruth', '1 Sm': '1 Samuel', '2 Sm': '2 Samuel',
+            '1 Kgs': '1 Kings', '2 Kgs': '2 Kings', '1 Chr': '1 Chronicles', '2 Chr': '2 Chronicles',
+            'Ezr': 'Ezra', 'Neh': 'Nehemiah', 'Tb': 'Tobit', 'Jdt': 'Judith', 'Est': 'Esther',
+            '1 Mc': '1 Maccabees', '2 Mc': '2 Maccabees', 'Jb': 'Job', 'Ps': 'Psalms', 'Prv': 'Proverbs',
+            'Eccl': 'Ecclesiastes', 'Sg': 'Song of Songs', 'Wis': 'Wisdom', 'Sir': 'Sirach',
+            'Is': 'Isaiah', 'Jer': 'Jeremiah', 'Lam': 'Lamentations', 'Bar': 'Baruch', 'Ez': 'Ezekiel',
+            'Dn': 'Daniel', 'Hos': 'Hosea', 'Jl': 'Joel', 'Am': 'Amos', 'Ob': 'Obadiah',
+            'Jon': 'Jonah', 'Mi': 'Micah', 'Na': 'Nahum', 'Hb': 'Habakkuk', 'Zep': 'Zephaniah',
+            'Hg': 'Haggai', 'Zec': 'Zechariah', 'Mal': 'Malachi',
+            # New Testament
+            'Mt': 'Matthew', 'Mk': 'Mark', 'Lk': 'Luke', 'Jn': 'John', 'Acts': 'Acts',
+            'Rom': 'Romans', '1 Cor': '1 Corinthians', '2 Cor': '2 Corinthians', 'Gal': 'Galatians',
+            'Eph': 'Ephesians', 'Phil': 'Philippians', 'Col': 'Colossians',
+            '1 Thes': '1 Thessalonians', '2 Thes': '2 Thessalonians', '1 Tm': '1 Timothy',
+            '2 Tm': '2 Timothy', 'Ti': 'Titus', 'Phlm': 'Philemon', 'Heb': 'Hebrews',
+            'Jas': 'James', '1 Pt': '1 Peter', '2 Pt': '2 Peter', '1 Jn': '1 John',
+            '2 Jn': '2 John', '3 Jn': '3 John', 'Jude': 'Jude', 'Rv': 'Revelation'
+        }
+        
+        expanded = reference
+        for abbr, full in abbreviations.items():
+            # Match abbreviation at start of reference or after a space
+            import re
+            pattern = r'\b' + re.escape(abbr) + r'\b'
+            expanded = re.sub(pattern, full, expanded)
+        
+        return expanded
+
     async def _fetch_scripture(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         all_items = []
@@ -657,8 +725,9 @@ class ContentAggregator:
                 
                 # Add First Reading
                 if readings.first_reading and readings.first_reading.get('text'):
+                    reference = self._expand_scripture_reference(readings.first_reading.get('reference', 'Daily Reading'))
                     all_items.append({
-                        "headline": f"First Reading: {readings.first_reading.get('reference', 'Daily Reading')}",
+                        "headline": f"First Reading: {reference}",
                         "url": base_url,
                         "content": readings.first_reading.get('text', ''),
                         "source": "USCCB Daily Readings",
@@ -668,8 +737,9 @@ class ContentAggregator:
                 
                 # Add Second Reading (if it exists - typically on Sundays/Solemnities)
                 if readings.second_reading and readings.second_reading.get('text'):
+                    reference = self._expand_scripture_reference(readings.second_reading.get('reference', 'Second Reading'))
                     all_items.append({
-                        "headline": f"Second Reading: {readings.second_reading.get('reference', 'Second Reading')}",
+                        "headline": f"Second Reading: {reference}",
                         "url": base_url,
                         "content": readings.second_reading.get('text', ''),
                         "source": "USCCB Daily Readings",
@@ -679,8 +749,9 @@ class ContentAggregator:
                 
                 # Add Gospel
                 if readings.gospel and readings.gospel.get('text'):
+                    reference = self._expand_scripture_reference(readings.gospel.get('reference', 'Daily Gospel'))
                     all_items.append({
-                        "headline": f"Gospel: {readings.gospel.get('reference', 'Daily Gospel')}",
+                        "headline": f"Gospel: {reference}",
                         "url": base_url,
                         "content": readings.gospel.get('text', ''),
                         "source": "USCCB Daily Readings", 
@@ -690,8 +761,9 @@ class ContentAggregator:
                     
                 # Add Responsorial Psalm if present
                 if hasattr(readings, 'responsorial_psalm') and readings.responsorial_psalm and readings.responsorial_psalm.get('text'):
+                    psalm_ref = self._expand_scripture_reference(readings.responsorial_psalm.get('reference', 'Psalm'))
                     all_items.append({
-                        "headline": f"Responsorial Psalm: {readings.responsorial_psalm.get('reference', 'Psalm')}",
+                        "headline": f"Responsorial Psalm: {psalm_ref}",
                         "url": base_url,
                         "content": readings.responsorial_psalm.get('text', ''),
                         "source": "USCCB Daily Readings",
@@ -1334,6 +1406,52 @@ class ContentAggregator:
             "buzzfeed.com", "www.buzzfeed.com",
             "medium.com",  # User-generated content
             "substack.com",  # Unless specific trusted authors
+            
+            # Foreign/Non-English news sources
+            "thehindu.com", "www.thehindu.com",
+            "hindustantimes.com", "www.hindustantimes.com",
+            "timesofindia.com", "www.timesofindia.com",
+            "indianexpress.com", "www.indianexpress.com",
+            "asahi.com", "www.asahi.com",
+            "chinadaily.com", "www.chinadaily.com.cn",
+            "xinhua.net", "xinhuanet.com",
+            "scmp.com", "www.scmp.com",  # South China Morning Post
+            "japantimes.co.jp", "www.japantimes.co.jp",
+            "koreaherald.com", "www.koreaherald.com",
+            "bangkokpost.com", "www.bangkokpost.com",
+            
+            # Low-quality US sources
+            "newsweek.com", "www.newsweek.com",
+            "nymag.com", "www.nymag.com",
+            "intelligencer.com", "www.intelligencer.com",
+            "theintelligencer.net", "www.theintelligencer.net",
+            "pressgazette.co.uk", "www.pressgazette.co.uk",
+            "usnews.com", "www.usnews.com",
+            "bostonherald.com", "www.bostonherald.com",
+            "semafor.com", "www.semafor.com",
+            "cnn.com", "www.cnn.com",  # Often sensationalist
+            "foxnews.com", "www.foxnews.com",  # Often biased
+            "msnbc.com", "www.msnbc.com",  # Often biased
+            
+            # Financial spam/low-quality
+            "yahoo.com", "finance.yahoo.com",
+            "ainvest.com", "www.ainvest.com",
+            "markets.financialcontent.com",
+            "thefiscaltimes.com", "www.thefiscaltimes.com",
+            "marketwatch.com", "www.marketwatch.com",
+            "seekingalpha.com", "www.seekingalpha.com",
+            "fool.com", "www.fool.com",  # Motley Fool
+            
+            # Regional/African sources
+            "cnbcafrica.com", "www.cnbcafrica.com",
+            "allafrica.com", "www.allafrica.com",
+            
+            # Academic/Newsletter aggregators (not news)
+            "mdpi.com", "www.mdpi.com",
+            "tandfonline.com", "www.tandfonline.com",
+            "eurekalert.org", "www.eurekalert.org",
+            "sciencedaily.com", "www.sciencedaily.com",
+            "phys.org", "www.phys.org",
         }
         def domain(u: str) -> str:
             try:
@@ -1403,6 +1521,26 @@ class ContentAggregator:
             url_domain = domain(url)
             if url_domain in bad_domains:
                 self.logger.debug(f"❌ Filtered (bad domain): {url_domain} - {head[:50]}")
+                continue
+            
+            # Check for foreign TLDs
+            if any(url_domain.endswith(tld) for tld in ['.in', '.cn', '.jp', '.kr', '.hk', '.tw', '.sg', '.my', '.th', '.id', '.africa']):
+                self.logger.debug(f"❌ Filtered (foreign TLD): {url_domain} - {head[:50]}")
+                continue
+            
+            # Check for non-Latin characters in headline (Chinese, Arabic, Hindi, etc.)
+            import unicodedata
+            non_latin_chars = 0
+            for char in head:
+                # Check if character is not in Latin, Common, or Inherited scripts
+                if unicodedata.category(char)[0] == 'L':  # Letter category
+                    script = unicodedata.name(char, '').split()[0] if unicodedata.name(char, '') else ''
+                    if script in ['CJK', 'ARABIC', 'DEVANAGARI', 'BENGALI', 'GUJARATI', 'HIRAGANA', 'KATAKANA', 'HANGUL', 'THAI', 'HEBREW']:
+                        non_latin_chars += 1
+            
+            # If more than 10% non-Latin characters, filter out
+            if len(head) > 0 and non_latin_chars / len(head) > 0.1:
+                self.logger.debug(f"❌ Filtered (non-Latin script): {head[:50]}")
                 continue
                 
             if too_old(published_raw):

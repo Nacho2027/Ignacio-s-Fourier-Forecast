@@ -258,8 +258,23 @@ class RSSService:
                         if sib.name in ["h2", "h3", "h4"]:
                             break
                         if sib.name == "p":
-                            parts.append(sib.get_text(" ", strip=True))
-                    return {"reference": reference, "text": "\n".join(parts).strip()}
+                            text = sib.get_text(" ", strip=True)
+                            # Remove copyright notices
+                            text = re.sub(r"Lectionary for Mass.*?©.*?\.", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"Used with permission.*?\.", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"Copyright.*?reserved.*?\.", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"©\s*\d{4}.*?\.", "", text)
+                            text = re.sub(r"All rights reserved.*?\.", "", text, flags=re.IGNORECASE)
+                            text = re.sub(r"Excerpts from.*?permission.*?\.", "", text, flags=re.IGNORECASE)
+                            text = text.strip()
+                            if text:  # Only add if there's content left after removing copyright
+                                parts.append(text)
+                    # Clean the final combined text as well
+                    final_text = "\n".join(parts).strip()
+                    # Remove any trailing copyright that might span paragraphs
+                    final_text = re.sub(r"Lectionary for Mass.*", "", final_text, flags=re.IGNORECASE)
+                    final_text = re.sub(r"Copyright.*", "", final_text, flags=re.IGNORECASE)
+                    return {"reference": reference, "text": final_text.strip()}
             return None
 
         first_reading = extract_section(["Reading 1", "Reading I", "First Reading"]) or {"reference": "", "text": ""}
