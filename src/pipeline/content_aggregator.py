@@ -461,7 +461,7 @@ class ContentAggregator:
                 ["technologyreview.com", "spectrum.ieee.org", "quantamagazine.org", "tldr.tech"],
                 "Tech/Science"
             )
-            items = self._filter_items(items_validated, max_age_days=14)  # Tech publications update weekly/biweekly
+            items = self._filter_items(items_validated, max_age_days=7)  # Tech news should be recent (within a week)
             self.logger.info("Tech/Science: %d items after filtering from %d raw", len(items), len(items_raw))
             return FetchResult("llmlayer", Section.TECH_SCIENCE, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
@@ -604,32 +604,59 @@ class ContentAggregator:
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
             
-            # Enhanced Renaissance-style query for intellectually diverse content
-            # Engineering removed per user request to avoid overlap with Tech & Science
+            # Query for substantive intellectual content - Renaissance man vision
             result = await self.llmlayer.search(
                 query=(
-                    f"Intellectually enriching discoveries and insights from {today} and recent weeks. "
-                    f"Find diverse, analytical content across these distinct domains:\n\n"
-                    f"🏛️ HISTORY & CIVILIZATION: Historical analyses, reinterpretations of past events, "
-                    f"civilizational studies, cultural evolution, historical perspectives on current issues\n\n"
-                    f"🎨 ARTS & CREATIVE EXPRESSION: Art exhibitions, literary criticism, musical developments, "
-                    f"theatrical innovations, aesthetic theory, creative process studies\n\n"
-                    f"🧠 PSYCHOLOGY & HUMAN NATURE: Behavioral science research, consciousness studies, "
-                    f"social psychology findings, cognitive insights, mental wellness advances\n\n"
-                    f"🌿 HEALTH & LONGEVITY: Medical breakthroughs, wellness innovations, public health insights, "
-                    f"preventive medicine, lifestyle research, aging studies\n\n"
-                    f"💭 PHILOSOPHY & ETHICS: Contemporary philosophical thought, ethical debates, "
-                    f"existential questions, moral philosophy, wisdom traditions\n\n"
-                    f"🏗️ DESIGN & HUMAN SPACES: Architectural innovation, urban planning, "
-                    f"environmental design, spatial psychology, community development\n\n"
-                    f"✨ HUMAN STORIES: Remarkable achievements, inspiring journeys, "
-                    f"unique perspectives, breakthrough discoveries, exceptional individuals\n\n"
-                    f"Seek substantive, in-depth articles from each domain. Avoid polymathic or interdisciplinary meta-content. "
-                    f"Focus on specific discoveries, insights, and developments within each field rather than connections between fields."
+                    f"Substantive intellectual exploration from {today} and recent days. "
+                    f"Find thoughtful, mind-expanding content for the modern Renaissance thinker:\n\n"
+                    f"📚 HISTORY & CULTURE: Historical discoveries, cultural analysis, "
+                    f"archaeological findings, historical parallels to modern events, forgotten histories\n\n"
+                    f"🧠 PSYCHOLOGY & MIND: Cognitive science breakthroughs, behavioral insights, "
+                    f"consciousness research, mental health advances, neuroscience discoveries\n\n"
+                    f"🎨 ART & LITERATURE: Literary criticism, art movements, cultural criticism, "
+                    f"book reviews of significant works, artistic innovations, creative processes\n\n"
+                    f"🏛️ PHILOSOPHY & IDEAS: Philosophical arguments, ethical debates, "
+                    f"thought experiments, intellectual history, big ideas that challenge assumptions\n\n"
+                    f"💪 HEALTH & HUMAN PERFORMANCE: Longevity research, exercise science, "
+                    f"nutrition breakthroughs, sleep science, human optimization, preventive medicine\n\n"
+                    f"🌍 SOCIETY & HUMAN NATURE: Sociology insights, anthropological studies, "
+                    f"urban planning innovations, social psychology, human behavior patterns\n\n"
+                    f"Find articles with SUBSTANCE and DEPTH that expand intellectual horizons. "
+                    f"AVOID: routine news, employment reports, course announcements, press releases, "
+                    f"clickbait, listicles, celebrity news, trivial updates, promotional content. "
+                    f"PREFER sources like: The Atlantic, Aeon, Quanta Magazine, New Yorker, "
+                    f"Nautilus, The Paris Review, JSTOR Daily, The Conversation, Psyche, Works in Progress."
                 ),
-                max_results=35,  # Increased for better variety
-                recency="month",  # Broader time range for intellectual content
-                search_type="general"  # Miscellaneous content isn't always news
+                max_results=35,
+                recency="week",  # Recent but not necessarily today
+                search_type="general",
+                # Add domain preferences for intellectual content
+                domain_filter=[
+                    "theatlantic.com",
+                    "aeon.co",
+                    "nautil.us",
+                    "newyorker.com",
+                    "quantamagazine.org",
+                    "theparisreview.org",
+                    "jstor.org",
+                    "theconversation.com",
+                    "psyche.co",
+                    "worksinprogress.co",
+                    "knowablemagazine.org",
+                    "newscientist.com",
+                    "harvardmagazine.com",
+                    "publicdomainreview.org",
+                    # Exclude routine/promotional sources
+                    "-bls.gov",
+                    "-*.edu/programs",
+                    "-*.edu/courses",
+                    "-eventbrite.com",
+                    "-coursera.org",
+                    "-edx.org",
+                    "-buzzfeed.com",
+                    "-businesswire.com",
+                    "-prnewswire.com"
+                ]
             )
             
             # Log the raw API response for debugging
@@ -1382,6 +1409,9 @@ class ContentAggregator:
         Quality and freshness filter for LLMLayer-derived items.
         Drops:
         - Very old items beyond max_age_days
+        - Anything older than 30 days regardless of section
+        - Anything from before 2024
+        - Items without valid dates
         - Aggregator/generic domains (YouTube, Wikipedia, Eventbrite, ScienceDaily, TS2.tech)
         - Non-informative clickbait/generic titles
         - Missing headline or url
@@ -1389,6 +1419,8 @@ class ContentAggregator:
         from datetime import datetime, timedelta
         import re
         cutoff = datetime.now() - timedelta(days=max_age_days)
+        # Hard cutoff: nothing older than 30 days
+        hard_cutoff = datetime.now() - timedelta(days=30)
         bad_domains = {
             # Social media and aggregators (unreliable for authoritative news)
             "youtube.com", "www.youtube.com", 
@@ -1461,15 +1493,29 @@ class ContentAggregator:
                 return ""
         def too_old(published: Optional[str]) -> bool:
             if not published:
-                # For breaking news (max_age_days <= 1), no date means we reject it
-                # For older content (max_age_days > 1), we're more lenient
-                return max_age_days <= 1  # Reject if breaking news, keep if older sections
+                # No date = reject for all news sections
+                # Articles without dates are unreliable and often old
+                self.logger.debug("❌ No publication date provided - rejecting article")
+                return True  # Always reject articles without dates
             try:
                 dt = datetime.fromisoformat(published)
-                return dt < cutoff
-            except Exception:
-                # If we can't parse the date, treat as too old for breaking news
-                return max_age_days <= 1
+                # Additional check: reject anything from before 2024
+                if dt.year < 2024:
+                    self.logger.debug(f"❌ Article from {dt.year} - too old")
+                    return True
+                # Hard cutoff: nothing older than 30 days
+                if dt < hard_cutoff:
+                    self.logger.debug(f"❌ Article older than 30 days: {published}")
+                    return True
+                # Section-specific cutoff
+                if dt < cutoff:
+                    self.logger.debug(f"❌ Article older than {max_age_days} days: {published}")
+                    return True
+                return False
+            except Exception as e:
+                # If we can't parse the date, reject it
+                self.logger.debug(f"❌ Could not parse date '{published}': {e}")
+                return True
         def bad_title(title: str) -> bool:
             if not title:
                 return True

@@ -266,6 +266,11 @@ class RSSService:
                             text = re.sub(r"©\s*\d{4}.*?\.", "", text)
                             text = re.sub(r"All rights reserved.*?\.", "", text, flags=re.IGNORECASE)
                             text = re.sub(r"Excerpts from.*?permission.*?\.", "", text, flags=re.IGNORECASE)
+                            # Remove the specific "Neither this work" copyright notice
+                            text = re.sub(r"Neither this work nor any part.*?copyright owner\.", "", text, flags=re.IGNORECASE | re.DOTALL)
+                            text = re.sub(r"Neither this work.*?without permission.*?\.", "", text, flags=re.IGNORECASE | re.DOTALL)
+                            # Catch any remaining copyright language
+                            text = re.sub(r".*may\s+be\s+reproduced.*?without\s+permission.*?\.", "", text, flags=re.IGNORECASE | re.DOTALL)
                             text = text.strip()
                             if text:  # Only add if there's content left after removing copyright
                                 parts.append(text)
@@ -274,6 +279,7 @@ class RSSService:
                     # Remove any trailing copyright that might span paragraphs
                     final_text = re.sub(r"Lectionary for Mass.*", "", final_text, flags=re.IGNORECASE)
                     final_text = re.sub(r"Copyright.*", "", final_text, flags=re.IGNORECASE)
+                    final_text = re.sub(r"Neither this work.*", "", final_text, flags=re.IGNORECASE)
                     return {"reference": reference, "text": final_text.strip()}
             return None
 

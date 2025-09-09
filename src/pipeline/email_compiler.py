@@ -230,29 +230,64 @@ class EmailCompiler:
         golden_thread: Optional[GoldenThread] = None,
         highlight: Optional[str] = None,
     ) -> str:
-        """Generate compelling 3-5 word subject line."""
-        # If a highlight is provided, use it (but truncate to 3-5 words)
+        """Generate compelling subject line that completes a thought (40-60 chars)."""
+        import re
+        
+        # Helper to find natural breaking point
+        def find_natural_break(text: str, max_len: int = 60) -> str:
+            if len(text) <= max_len:
+                return text
+            
+            # Look for natural breaks within the limit
+            # Priority: sentence end > clause break > phrase break
+            breakpoints = [
+                (r'[.!?]', 1),  # End of sentence (include punctuation)
+                (r'[—–-]', 0),   # Em dash, en dash, hyphen (break before)
+                (r'[:;]', 1),    # Colon or semicolon (include punctuation)
+                (r',(?=\s+(?:as|while|when|where|which|who))', 1),  # Comma before clause
+                (r',', 1),       # Any comma
+            ]
+            
+            for pattern, include_match in breakpoints:
+                matches = list(re.finditer(pattern, text[:max_len]))
+                if matches:
+                    last_match = matches[-1]
+                    break_pos = last_match.end() if include_match else last_match.start()
+                    result = text[:break_pos].strip()
+                    if len(result) >= 30:  # Ensure minimum length
+                        return result
+            
+            # No natural break found - try to complete the current word/thought
+            # Find the last complete word before the limit
+            words = text[:max_len].split()
+            if len(words) > 3:
+                # Try to include at least a meaningful phrase
+                for i in range(len(words) - 1, 2, -1):
+                    candidate = " ".join(words[:i+1])
+                    if len(candidate) <= 60:
+                        return candidate
+            
+            # Fallback: just truncate at word boundary
+            return " ".join(words[:4]) if len(words) > 3 else text[:max_len]
+        
+        # If a highlight is provided, use it
         if highlight:
-            words = highlight.split()[:5]
-            return " ".join(words)
+            return find_natural_break(highlight, 60)
         
         # If golden thread exists, create subject from it
         if golden_thread:
             # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
             hint = getattr(golden_thread, 'insight', None) or getattr(golden_thread, 'connection', None) or getattr(golden_thread, 'theme', None)
             if hint:
-                # Take first 3-5 words of the golden thread
-                words = hint.split()[:5]
-                if len(words) >= 3:
-                    return " ".join(words)
+                return find_natural_break(hint, 60)
         
-        # Default subjects based on common themes (3-5 words)
+        # Default subjects (complete thoughts)
         default_subjects = [
-            "Markets Rally Today",
-            "Tech Breakthrough News",
-            "Fed Decision Looms",
-            "AI News Today",
-            "Breaking Global Updates"
+            "Today's Tech and Market Convergence",
+            "AI Breakthroughs Shape Tomorrow",
+            "Global Shifts in Focus",
+            "Innovation Meets Reality",
+            "Breaking: Science and Society Collide"
         ]
         
         # Use date to pick a default (rotate through them)

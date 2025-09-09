@@ -194,9 +194,13 @@ gpt5_pattern_synthesis:
     
     Examples of GOOD golden threads (revealing hidden patterns):
     - "The artificial scarcity driving NVIDIA's chip prices is the same leverage strategy behind the Fed's rate freeze and Congress's subsidy panic - scarcity has become the new monopoly."
-    - "Today's stories show how 'safety' has become the universal justification for control, whether it's AI regulation, content moderation, or monetary policy."
-    - "Every institution in today's news is fighting yesterday's war: Congress funding chips when the battle's in AI models, universities teaching frameworks already obsolete, investors chasing last quarter's winners."
-    - "The pattern is clear: information asymmetry has replaced innovation as the primary source of power, from OpenAI's secrecy to the Fed's opacity to Apple's walled garden."
+    - "Three unrelated breakthroughs this week share a paradox: the simpler the interface, the more complex the underlying system required to support it."
+    - "Today's pattern: institutions built for permanence are being outpaced by companies designed for obsolescence."
+    - "A curious inversion emerges: as machines grow more human-like, humans increasingly organize like machines."
+    - "The real story isn't AI replacing jobs but AI revealing which human activities were algorithmic all along."
+    - "Notice how today's 'innovations' are really excavations - rediscovering principles physics knew in the 1960s, economics in the 1890s."
+    - "The cycle completes: centralized platforms create decentralized problems requiring centralized solutions."
+    - "What connects quantum computing and social media regulation? Both show our laws of physics and laws of society breaking down at scale."
     
     Examples of BAD golden threads (too literal or too abstract):
     - "OpenAI's announcement is affecting NVIDIA's stock and Congress is funding chips" (too literal)
@@ -224,6 +228,8 @@ gpt5_pattern_synthesis:
     - Should make readers think differently about the news
     - Set confidence between 0.7-0.9 based on insight strength
     - Include 2-3 patterns, with the most insightful one first
+    - AVOID formulaic patterns like "X has become Y" or "artificial intermediation"
+    - Find fresh, unique angles specific to today's actual news stories
     - Reference specific stories but reveal deeper patterns
     - DO NOT wrap response in ``` or any other formatting
 

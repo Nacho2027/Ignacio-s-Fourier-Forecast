@@ -1136,19 +1136,32 @@ Standard: Meaningful impact on community life.""",
                 else:
                     # Truncate gracefully at sentence boundary
                     max_len = 220
-                    if '.' in greeting[:max_len]:
-                        truncated = greeting[:greeting.rfind('.', 0, max_len) + 1]
-                        self.logger.warning(f"⚠️ Truncated greeting from {greeting_len} to {len(truncated)} chars")
-                        return truncated
-                    elif '!' in greeting[:max_len]:
-                        truncated = greeting[:greeting.rfind('!', 0, max_len) + 1]
+                    # Look for sentence endings, but not the first "Good morning!" 
+                    # Find all periods and exclamation marks after position 20
+                    sentence_ends = []
+                    for i, char in enumerate(greeting[:max_len]):
+                        if i > 20 and char in '.!':  # Skip the initial greeting
+                            sentence_ends.append(i)
+                    
+                    if sentence_ends:
+                        # Use the last sentence ending before the limit
+                        truncate_at = sentence_ends[-1] + 1
+                        truncated = greeting[:truncate_at]
                         self.logger.warning(f"⚠️ Truncated greeting from {greeting_len} to {len(truncated)} chars")
                         return truncated
                     else:
-                        # Hard truncate if no sentence boundary
-                        truncated = greeting[:217] + "..."
-                        self.logger.warning(f"⚠️ Hard truncated greeting from {greeting_len} to {len(truncated)} chars")
-                        return truncated
+                        # No good sentence boundary found - truncate at word boundary
+                        if len(greeting) > max_len:
+                            # Find last space before limit
+                            last_space = greeting.rfind(' ', 0, max_len - 3)
+                            if last_space > 20:  # Ensure we keep more than just "Good morning!"
+                                truncated = greeting[:last_space] + "..."
+                            else:
+                                truncated = greeting[:max_len - 3] + "..."
+                            self.logger.warning(f"⚠️ Hard truncated greeting from {greeting_len} to {len(truncated)} chars")
+                            return truncated
+                        else:
+                            return greeting  # Should not happen since we checked length
             else:
                 self.logger.warning(f"❌ AI greeting validation failed. Greeting: '{greeting}'")
                         
