@@ -195,7 +195,8 @@ class EmailCompiler:
                 "items": items
             }
 
-        subject = self._generate_subject_line(date, golden_thread=golden_thread)
+        # Generate subject line from top news stories
+        subject = self._generate_subject_line(date, sections=sections)
         preview_text = self._generate_preview_text(sections, golden_thread)
         greeting = await self._generate_greeting(date, sections, golden_thread)
 
@@ -227,11 +228,11 @@ class EmailCompiler:
     def _generate_subject_line(
         self,
         date: datetime,
-        golden_thread: Optional[GoldenThread] = None,
-        highlight: Optional[str] = None,
+        sections: Optional[Dict[Section, SectionSummaries]] = None,
     ) -> str:
-        """Generate compelling subject line that completes a thought (40-60 chars)."""
+        """Generate compelling subject line from top news stories (40-60 chars)."""
         import re
+        import random
         
         # Helper to find natural breaking point
         def find_natural_break(text: str, max_len: int = 60) -> str:
@@ -270,24 +271,53 @@ class EmailCompiler:
             # Fallback: just truncate at word boundary
             return " ".join(words[:4]) if len(words) > 3 else text[:max_len]
         
-        # If a highlight is provided, use it
-        if highlight:
-            return find_natural_break(highlight, 60)
+        # Generate from top news stories
+        if sections:
+            # Collect top stories from Breaking News, Business, and Tech sections
+            top_stories = []
+            
+            # Priority sections for subject line
+            priority_sections = [Section.BREAKING_NEWS, Section.BUSINESS, Section.TECH_SCIENCE]
+            
+            for section in priority_sections:
+                if section in sections and sections[section].summaries:
+                    for summary in sections[section].summaries[:2]:  # Top 2 from each
+                        if summary.headline:
+                            top_stories.append(str(summary.headline))
+            
+            if top_stories:
+                # Pick the most newsworthy story based on keywords
+                # Prioritize stories with impact words
+                impact_keywords = ['breakthrough', 'crisis', 'surge', 'plunge', 'historic', 
+                                 'unprecedented', 'major', 'critical', 'emergency', 'exclusive']
+                
+                best_story = top_stories[0]
+                for story in top_stories:
+                    story_lower = story.lower()
+                    if any(keyword in story_lower for keyword in impact_keywords):
+                        best_story = story
+                        break
+                
+                # Clean up the headline for use as subject
+                # Remove source attributions like "- Reuters" or "| CNN"
+                import re
+                cleaned = re.sub(r'\s*[-|]\s*(Reuters|AP|CNN|BBC|WSJ|Bloomberg|NYT|FT)\s*$', '', best_story)
+                
+                # Ensure it's compelling and complete
+                return find_natural_break(cleaned, 60)
         
-        # If golden thread exists, create subject from it
-        if golden_thread:
-            # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
-            hint = getattr(golden_thread, 'insight', None) or getattr(golden_thread, 'connection', None) or getattr(golden_thread, 'theme', None)
-            if hint:
-                return find_natural_break(hint, 60)
-        
-        # Default subjects (complete thoughts)
+        # Fallback: Default subjects (complete thoughts) with more variety
         default_subjects = [
             "Today's Tech and Market Convergence",
             "AI Breakthroughs Shape Tomorrow",
             "Global Shifts in Focus",
             "Innovation Meets Reality",
-            "Breaking: Science and Society Collide"
+            "Breaking: Science and Society Collide",
+            "The Week's Most Critical Developments",
+            "Power Shifts in Technology and Politics",
+            "New Frontiers in Science and Business",
+            "Disruption Accelerates Across Industries",
+            "Critical Updates You Need Today"
         ]
         
         # Use date to pick a default (rotate through them)

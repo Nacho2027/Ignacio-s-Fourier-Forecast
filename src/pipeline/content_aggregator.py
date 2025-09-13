@@ -502,26 +502,30 @@ class ContentAggregator:
     async def _fetch_politics(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # VISION.txt specifies: Associated Press, nonpartisan sources only, US politics only
-            self.logger.info("Fetching US politics from AP via LLMLayer")
+            # VISION.txt allows: Associated Press and other nonpartisan sources, US politics only
+            self.logger.info("Fetching US politics from multiple trusted sources via LLMLayer")
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
+            
+            # Broader query to catch more political news
             result = await self.llmlayer.search(
                 query=(
-                    f"What major US federal POLITICAL developments happened on {today} today "
-                    f"according to Associated Press (apnews.com)? "
-                    f"Focus EXCLUSIVELY on: Congressional votes, bills passed or blocked, "
-                    f"Supreme Court decisions, Presidential executive orders, Cabinet appointments, "
-                    f"White House policy announcements, federal agency rulings. "
-                    f"EXCLUDE ALL: entertainment, movies, TV shows, cultural events, festivals, "
-                    f"celebrity news, sports, obituaries, human interest stories. "
-                    f"ONLY hard political news from apnews.com."
+                    f"Major US federal political developments happening {today} or yesterday. "
+                    f"Include: Congressional actions, votes, bills, legislation, "
+                    f"Supreme Court decisions, rulings, cases, "
+                    f"Presidential executive orders, White House announcements, "
+                    f"Cabinet news, federal agency decisions, policy changes. "
+                    f"From trusted nonpartisan sources like Associated Press, Reuters, PBS, NPR, BBC. "
+                    f"EXCLUDE entertainment, sports, celebrity news."
                 ),
-                max_results=15,  # Increase to find more political content
-                domains=["apnews.com"],  # Now properly used via domain_filter
+                max_results=25,  # Increase to find more political content
+                domains=["apnews.com", "reuters.com", "pbs.org", "npr.org", "bbc.com", "propublica.org"],  # Multiple trusted sources
                 recency="day",
                 search_type="news"  # Use news search type for political news
             )
+            
+            self.logger.info(f"Politics: Got {len(result.citations)} citations from initial search")
+            
             items_raw = [
                 {
                     "headline": c.title,
@@ -532,9 +536,53 @@ class ContentAggregator:
                 }
                 for c in result.citations
             ]
-            # Validate sources BEFORE other filtering
-            items_validated = self._validate_sources(items_raw, ["apnews.com"], "Politics")
-            items = self._filter_items(items_validated, max_age_days=2)  # Politics needs recent updates  
+            
+            # Validate sources BEFORE other filtering - expanded trusted sources list
+            trusted_sources = [
+                "apnews.com", "reuters.com", "pbs.org", "npr.org", 
+                "bbc.com", "bbc.co.uk", "propublica.org", "politico.com"
+            ]
+            items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
+            items = self._filter_items(items_validated, max_age_days=2)  # Politics needs recent updates
+            self.logger.info("Politics: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            
+            # If we still have too few items, try a fallback search
+            if len(items) < 3:
+                self.logger.warning(f"Politics: Only {len(items)} items found, trying fallback search")
+                fallback_result = await self.llmlayer.search(
+                    query=(
+                        f"US Congress Senate House Representatives Supreme Court President Biden {today} yesterday "
+                        f"legislation vote decision ruling policy federal government politics"
+                    ),
+                    max_results=20,
+                    domains=trusted_sources,
+                    recency="week",  # Expand to week for fallback
+                    search_type="news"
+                )
+                
+                fallback_items_raw = [
+                    {
+                        "headline": c.title,
+                        "url": c.url,
+                        "content": c.snippet,
+                        "source": c.source_name,
+                        "published": (c.published_date.isoformat() if c.published_date else None),
+                    }
+                    for c in fallback_result.citations
+                ]
+                
+                # Deduplicate by URL
+                existing_urls = {item["url"] for item in items}
+                for fallback_item in fallback_items_raw:
+                    if fallback_item["url"] not in existing_urls:
+                        items_raw.append(fallback_item)
+                        existing_urls.add(fallback_item["url"])
+                
+                # Re-filter combined items
+                items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
+                items = self._filter_items(items_validated, max_age_days=3)  # Allow 3 days in fallback
+                self.logger.info(f"Politics: After fallback, {len(items)} final items from {len(items_raw)} total")
+            
             return FetchResult("llmlayer", Section.POLITICS, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             # Non-critical; return error result
@@ -631,7 +679,7 @@ class ContentAggregator:
                 recency="week",  # Recent but not necessarily today
                 search_type="general",
                 # Add domain preferences for intellectual content
-                domain_filter=[
+                domains=[
                     "theatlantic.com",
                     "aeon.co",
                     "nautil.us",

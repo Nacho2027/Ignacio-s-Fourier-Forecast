@@ -1128,14 +1128,14 @@ Standard: Meaningful impact on community life.""",
             
             # Validate the greeting - ensure it starts appropriately and isn't empty
             if greeting and len(greeting) > 10 and any(word in greeting.lower() for word in ['good morning', 'hello', 'rise', 'greetings']):
-                # Ensure it's under 220 characters (with safety margin)
+                # Ensure it's under 300 characters (with safety margin)
                 greeting_len = len(greeting)
-                if greeting_len <= 220:
+                if greeting_len <= 300:
                     self.logger.info(f"✅ Generated contextual greeting ({greeting_len} chars): {greeting}")
                     return greeting
                 else:
                     # Truncate gracefully at sentence boundary
-                    max_len = 220
+                    max_len = 300
                     # Look for sentence endings, but not the first "Good morning!" 
                     # Find all periods and exclamation marks after position 20
                     sentence_ends = []

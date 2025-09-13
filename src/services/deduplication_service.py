@@ -140,11 +140,15 @@ class DeduplicationService:
                 self.stats["url_filtered"] += 1
                 continue
 
-            # Layer 2: Check historical cache for cross-day deduplication (informational only)
+            # Layer 2: Check historical cache for cross-day deduplication
             is_historical = await self._check_url_duplicate(item) or await self._check_title_duplicate(item)
             if is_historical:
-                self.logger.info(f"Item seen in previous days (historical, not filtering): {item.headline[:50]}...")
-                # We DON'T filter historical duplicates - they're tracked but allowed through
+                self.logger.info(f"Item seen in previous days - filtering duplicate: {item.headline[:50]}...")
+                # Filter historical duplicates to prevent repetition across days
+                if section == "research_papers":
+                    self.logger.warning(f"Research paper FILTERED as historical duplicate: {item.url}")
+                self.stats["url_filtered"] += 1
+                continue
 
             # Layer 3: Semantic similarity
             similar_items = await self._find_similar_items(item, threshold=self.similarity_threshold)
