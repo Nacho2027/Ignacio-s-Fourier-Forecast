@@ -159,7 +159,7 @@ class LLMLayerService:
         self,
         query: str,
         max_results: int = 10,
-        domains: Optional[List[str]] = None,
+        domains: Optional[List[str]] = None,  # DEPRECATED - will be ignored
         recency: Optional[str] = None,
         search_type: str = "general",
         exclude_domains: Optional[List[str]] = None,
@@ -209,20 +209,22 @@ class LLMLayerService:
                     "max_queries": 2,  # Generate 2 internal search queries for better coverage
                 }
                 
-                # Build domain filter with both inclusions and exclusions
+                # Build domain filter with ONLY exclusions (no inclusions)
+                # Including domains restricts search to ONLY those domains, which is too limiting
                 domain_filter = []
                 
-                # Add included domains
-                if domains:
-                    domain_filter.extend(domains)
-                
-                # Add excluded domains with "-" prefix
-                # Default exclusions for all searches
+                # Default exclusions for all searches - low quality and social media
                 default_exclusions = [
                     "-twitter.com", "-x.com", "-facebook.com", "-instagram.com", 
                     "-tiktok.com", "-reddit.com", "-pinterest.com", "-linkedin.com",
                     "-medium.com", "-buzzfeed.com", "-businessinsider.com",
-                    "-news.google.com", "-news.ycombinator.com", "-forbes.com/sites"
+                    "-news.google.com", "-news.ycombinator.com", "-forbes.com/sites",
+                    "-patch.com", "-yahoo.com", "-msn.com",
+                    # Add low-quality international sources
+                    "-tribune.com.pk", "-timesofindia.indiatimes.com", 
+                    "-hindustantimes.com", "-indianexpress.com",
+                    "-dailymail.co.uk", "-thesun.co.uk", "-mirror.co.uk",
+                    "-rt.com", "-sputniknews.com", "-chinadaily.com.cn"
                 ]
                 domain_filter.extend(default_exclusions)
                 
@@ -233,22 +235,30 @@ class LLMLayerService:
                             domain = f"-{domain}"
                         domain_filter.append(domain)
                 
+                # Note: We're NOT adding included domains anymore - that was the bug!
+                # Let the API search broadly, then we filter with SourceRankingService
+                
                 if domain_filter:
                     search_params["domain_filter"] = domain_filter
                 
-                # Enhanced system prompt for better article discovery
+                # Enhanced system prompt for better article discovery with source preferences
                 search_params["system_prompt"] = (
-                    "You are a sophisticated content curator seeking intellectually stimulating articles. "
+                    "You are a sophisticated content curator seeking high-quality, intellectually stimulating articles. "
                     "Focus on finding specific, full-length article URLs (not homepages or category pages). "
+                    "STRONGLY PREFER these trusted sources:\n"
+                    "- News: Reuters, AP News, BBC, NPR, Axios, WSJ, NYT, Washington Post, Guardian\n"
+                    "- Intellectual: The Atlantic, New Yorker, Aeon, Nautilus, Quanta Magazine\n"
+                    "- Tech: Wired, Ars Technica, The Verge (not TechCrunch or startup PR)\n"
+                    "- Academic: Nature, Science, The Lancet, PNAS\n\n"
                     "Prioritize content that meets these criteria:\n"
-                    "1. DEPTH: In-depth, analytical pieces with substantive insights (1000+ words preferred)\n"
-                    "2. AUTHORITY: From respected publications, academic sources, or domain experts\n"
+                    "1. CREDIBILITY: From established, reputable news organizations and publications\n"
+                    "2. DEPTH: In-depth reporting with substantive insights (1000+ words preferred)\n"
                     "3. ORIGINALITY: Novel perspectives, breakthrough findings, or unique analyses\n"
-                    "4. DIVERSITY: Ensure variety across different topics and perspectives within the query\n"
-                    "5. RECENCY: Recent content but not breaking news unless exceptional\n"
-                    "6. INTELLECTUAL MERIT: Content that challenges thinking or offers profound insights\n"
-                    "Avoid: listicles, clickbait, press releases, promotional content, or superficial coverage. "
-                    "Look for long-form journalism, research summaries, expert analyses, and thoughtful essays."
+                    "4. DIVERSITY: Variety across different credible sources and perspectives\n"
+                    "5. RECENCY: Recent content, properly dated and sourced\n"
+                    "6. FACTUAL: Evidence-based reporting, not opinion or speculation\n"
+                    "AVOID: Tabloids, partisan sites, content farms, press releases, social media posts, "
+                    "blogs, promotional content, or any source known for misinformation."
                 )
                 
                 # Increase search quality parameters

@@ -1047,6 +1047,97 @@ Standard: Meaningful impact on community life.""",
         except Exception:
             return None
 
+    async def generate_subject_line(self, top_stories: List[Dict[str, str]]) -> str:
+        """
+        Generate a compelling email subject line from top news stories using AI.
+        
+        Args:
+            top_stories: List of top story dictionaries with 'headline', 'source', and optionally 'impact' keys
+            
+        Returns:
+            A complete, compelling subject line (40-70 characters)
+        """
+        self.logger.info(f"📧 Generating AI subject line from {len(top_stories)} top stories")
+        
+        # Clean stories - remove source attributions from headlines
+        import re
+        cleaned_stories = []
+        for story in top_stories[:5]:  # Use top 5 stories max
+            headline = story.get('headline', '')
+            # Remove source attributions
+            headline = re.sub(r'\s*[-|]\s*(Reuters|AP|CNN|BBC|WSJ|Bloomberg|NYT|FT|NBC|ABC|CBS|Fox)\s*$', '', headline, flags=re.IGNORECASE)
+            cleaned_stories.append({
+                'headline': headline,
+                'source': story.get('source', ''),
+                'impact': story.get('impact', '')
+            })
+        
+        context = {
+            "top_stories_json": json.dumps(cleaned_stories, ensure_ascii=False)
+        }
+        
+        try:
+            messages = self._format_prompt("gpt5_subject_line", context)
+            
+            # Use tool-calling for reliable extraction
+            tools = [
+                {
+                    "type": "custom",
+                    "name": "return_subject",
+                    "description": "Return the email subject line",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "subject": {"type": "string"}
+                        },
+                        "required": ["subject"]
+                    }
+                }
+            ]
+            forced_choice = {"type": "tool", "name": "return_subject"}
+            
+            resp = await self._call_claude(messages=messages, max_tokens=256, tools=tools, tool_choice=forced_choice)
+            
+            # Extract subject from tool call
+            tool = self._extract_tool_call(resp)
+            subject = ""
+            if tool:
+                try:
+                    args = json.loads(tool["function"]["arguments"]) or {}
+                    subject = args.get("subject", "").strip()
+                    
+                    # Validate subject - ensure it's complete and right length
+                    if subject and 30 <= len(subject) <= 70:
+                        # Check it's not truncated (doesn't end in incomplete words or mid-thought)
+                        if not subject.endswith(('...', ' for', ' by', ' of', ' in', ' at', ' on', ' to', ' from')):
+                            self.logger.info(f"✅ Generated AI subject line ({len(subject)} chars): {subject}")
+                            return subject
+                        else:
+                            self.logger.warning(f"⚠️ Subject appears truncated: {subject}")
+                    else:
+                        self.logger.warning(f"⚠️ Subject wrong length ({len(subject)} chars): {subject}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to parse subject tool arguments: {e}")
+            
+            # Fallback to a default if AI fails
+            self.logger.warning("❌ AI subject generation failed, using fallback")
+            if top_stories and top_stories[0].get('headline'):
+                # Use cleaned first headline as fallback
+                fallback = cleaned_stories[0]['headline'][:60]
+                # Ensure it ends on a complete word
+                if len(fallback) == 60:
+                    last_space = fallback.rfind(' ')
+                    if last_space > 30:
+                        fallback = fallback[:last_space]
+                return fallback
+            
+            return "Today's Critical Developments"
+            
+        except Exception as e:
+            self.logger.error(f"💥 Subject line generation failed: {e}")
+            return "Today's Essential Updates"
+
     async def generate_morning_greeting(self, date: datetime, newsletter_content: Optional[Dict[str, Any]] = None, golden_thread: Optional[str] = None) -> str:
         """
         Generate an AI-powered inspirational morning greeting that's contextually relevant to the day's content.

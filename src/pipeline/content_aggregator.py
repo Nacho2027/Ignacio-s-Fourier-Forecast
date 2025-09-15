@@ -10,6 +10,7 @@ from src.services.arxiv import ArxivService, ArxivPaper
 from src.services.rss import RSSService, DailyReading
 from src.services.ai_service import AIService, RankingResult
 from src.services.semantic_scholar_service import SemanticScholarService
+from src.services.source_ranking_service import SourceRankingService
 
 
 class Section:
@@ -122,6 +123,7 @@ class ContentAggregator:
         cache_service=None,
         embeddings=None,
         semantic_scholar: Optional[SemanticScholarService] = None,
+        source_ranker: Optional[SourceRankingService] = None,
     ) -> None:
         self.llmlayer = llmlayer
         self.arxiv = arxiv
@@ -129,6 +131,9 @@ class ContentAggregator:
         self.ai = ai
         self.cache_service = cache_service
         self.embeddings = embeddings
+        
+        # Initialize source ranking service if not provided
+        self.source_ranker = source_ranker or SourceRankingService()
         self.semantic_scholar = semantic_scholar
 
         self.parallel_limit = 10
@@ -331,8 +336,9 @@ class ContentAggregator:
             
             # Validate sources BEFORE other filtering
             items_validated = self._validate_sources(items_raw, ["apnews.com", "reuters.com"], "Breaking News")
-            items = self._filter_items(items_validated, max_age_days=1)  # Breaking news must be very recent
-            self.logger.info("Breaking news: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            # Use multi-stage pipeline instead of simple filtering
+            items = self._apply_multi_stage_pipeline(items_validated, Section.BREAKING_NEWS, max_age_days=1, min_items=3)
+            self.logger.info("Breaking news: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             
             # If too few items after filtering, try again with stricter query
             if len(items) < 3:
@@ -655,56 +661,27 @@ class ContentAggregator:
             # Query for substantive intellectual content - Renaissance man vision
             result = await self.llmlayer.search(
                 query=(
-                    f"Substantive intellectual exploration from {today} and recent days. "
-                    f"Find thoughtful, mind-expanding content for the modern Renaissance thinker:\n\n"
-                    f"📚 HISTORY & CULTURE: Historical discoveries, cultural analysis, "
-                    f"archaeological findings, historical parallels to modern events, forgotten histories\n\n"
-                    f"🧠 PSYCHOLOGY & MIND: Cognitive science breakthroughs, behavioral insights, "
-                    f"consciousness research, mental health advances, neuroscience discoveries\n\n"
-                    f"🎨 ART & LITERATURE: Literary criticism, art movements, cultural criticism, "
-                    f"book reviews of significant works, artistic innovations, creative processes\n\n"
-                    f"🏛️ PHILOSOPHY & IDEAS: Philosophical arguments, ethical debates, "
-                    f"thought experiments, intellectual history, big ideas that challenge assumptions\n\n"
-                    f"💪 HEALTH & HUMAN PERFORMANCE: Longevity research, exercise science, "
-                    f"nutrition breakthroughs, sleep science, human optimization, preventive medicine\n\n"
-                    f"🌍 SOCIETY & HUMAN NATURE: Sociology insights, anthropological studies, "
-                    f"urban planning innovations, social psychology, human behavior patterns\n\n"
+                    f"Find the most intellectually stimulating articles from {today} and the past week. "
+                    f"Look for content from The Atlantic, New Yorker, Aeon, Nautilus, Quanta Magazine, "
+                    f"Paris Review, JSTOR, The Conversation, Psyche, Works in Progress, and similar publications.\n\n"
+                    f"Topics to explore:\n"
+                    f"- Historical discoveries, cultural analysis, archaeological findings\n"
+                    f"- Psychology breakthroughs, consciousness research, neuroscience\n"
+                    f"- Literary criticism, art movements, creative processes\n"
+                    f"- Philosophy, ethical debates, big ideas that challenge assumptions\n"
+                    f"- Longevity research, exercise science, human optimization\n"
+                    f"- Sociology insights, anthropological studies, human behavior patterns\n\n"
                     f"Find articles with SUBSTANCE and DEPTH that expand intellectual horizons. "
-                    f"AVOID: routine news, employment reports, course announcements, press releases, "
-                    f"clickbait, listicles, celebrity news, trivial updates, promotional content. "
-                    f"PREFER sources like: The Atlantic, Aeon, Quanta Magazine, New Yorker, "
-                    f"Nautilus, The Paris Review, JSTOR Daily, The Conversation, Psyche, Works in Progress."
+                    f"Look for long-form essays, research summaries, and thoughtful analysis. "
+                    f"PREFER: The Atlantic, Aeon, Quanta Magazine, New Yorker, Nautilus, "
+                    f"Paris Review, JSTOR Daily, The Conversation, Psyche, Works in Progress. "
+                    f"AVOID: routine news, press releases, clickbait, listicles, promotional content."
                 ),
-                max_results=35,
+                max_results=50,  # Get MORE results since we'll filter heavily
                 recency="week",  # Recent but not necessarily today
-                search_type="general",
-                # Add domain preferences for intellectual content
-                domains=[
-                    "theatlantic.com",
-                    "aeon.co",
-                    "nautil.us",
-                    "newyorker.com",
-                    "quantamagazine.org",
-                    "theparisreview.org",
-                    "jstor.org",
-                    "theconversation.com",
-                    "psyche.co",
-                    "worksinprogress.co",
-                    "knowablemagazine.org",
-                    "newscientist.com",
-                    "harvardmagazine.com",
-                    "publicdomainreview.org",
-                    # Exclude routine/promotional sources
-                    "-bls.gov",
-                    "-*.edu/programs",
-                    "-*.edu/courses",
-                    "-eventbrite.com",
-                    "-coursera.org",
-                    "-edx.org",
-                    "-buzzfeed.com",
-                    "-businesswire.com",
-                    "-prnewswire.com"
-                ]
+                search_type="general"
+                # NO domains parameter! This was the bug - it restricts to ONLY those domains
+                # We now let it search broadly and filter with SourceRankingService
             )
             
             # Log the raw API response for debugging
@@ -1451,6 +1428,86 @@ class ContentAggregator:
         # Just log what we got for debugging
         self.logger.debug(f"{section_name}: Got {len(items)} items from LLMLayer")
         return items
+    
+    def _apply_multi_stage_pipeline(
+        self, 
+        items: List[Dict[str, Any]], 
+        section: str,
+        max_age_days: int,
+        min_items: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Multi-stage content pipeline with quality assurance.
+        
+        Stage 1: Basic filtering (dates, bad domains)
+        Stage 2: Source ranking and scoring
+        Stage 3: Quality filtering by score
+        Stage 4: Diversity limits
+        Stage 5: Fallback if needed
+        """
+        # Stage 1: Basic filtering
+        filtered = self._filter_items(items, max_age_days)
+        self.logger.info(f"{section}: Stage 1 - {len(items)} -> {len(filtered)} after basic filtering")
+        
+        # Convert to NewsItem objects for source ranking
+        from src.models.content import NewsItem
+        news_items = []
+        for item in filtered:
+            try:
+                # Parse published date
+                published_date = None
+                if item.get("published"):
+                    from datetime import datetime
+                    import dateutil.parser
+                    published_date = dateutil.parser.parse(item["published"])
+                
+                news_item = NewsItem(
+                    id=item.get("url", ""),
+                    url=item.get("url", ""),
+                    headline=item.get("headline", ""),
+                    content=item.get("content", ""),
+                    source=item.get("source", ""),
+                    published_date=published_date,
+                    section=section
+                )
+                news_items.append(news_item)
+            except Exception as e:
+                self.logger.warning(f"Failed to create NewsItem: {e}")
+                continue
+        
+        # Stage 2 & 3: Source ranking and quality filtering
+        min_score = 3.0  # Default minimum score
+        if section in [Section.BREAKING_NEWS, Section.POLITICS]:
+            min_score = 6.0  # Higher standards for news sections
+        elif section == Section.MISCELLANEOUS:
+            min_score = 4.0  # Medium standards for misc intellectual content
+        
+        ranked_items = self.source_ranker.process_and_rank(
+            news_items,
+            min_score=min_score,
+            apply_diversity=True,
+            max_items=None  # Don't limit yet
+        )
+        
+        self.logger.info(f"{section}: Stage 2&3 - {len(news_items)} -> {len(ranked_items)} after source ranking")
+        
+        # Convert back to dict format
+        result = []
+        for item in ranked_items:
+            result.append({
+                "headline": item.headline,
+                "url": item.url,
+                "content": item.content,
+                "source": item.source,
+                "published": item.published_date.isoformat() if item.published_date else None,
+            })
+        
+        # Stage 5: Fallback if insufficient items
+        if len(result) < min_items:
+            self.logger.warning(f"{section}: Only {len(result)} items after pipeline, need {min_items}")
+            # Return what we have - the fetch method will handle retry/fallback
+        
+        return result
     
     def _filter_items(self, items: List[Dict[str, Any]], max_age_days: int) -> List[Dict[str, Any]]:
         """

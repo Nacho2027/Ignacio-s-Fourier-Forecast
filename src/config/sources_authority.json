@@ -1,0 +1,148 @@
+{
+  "tier_1": {
+    "score": 10,
+    "description": "Premier global news agencies and trusted sources",
+    "sources": [
+      "reuters.com",
+      "apnews.com",
+      "ap.org",
+      "bbc.com",
+      "bbc.co.uk",
+      "npr.org",
+      "axios.com",
+      "propublica.org",
+      "pbs.org"
+    ]
+  },
+  "tier_2": {
+    "score": 8,
+    "description": "Major newspapers and established media",
+    "sources": [
+      "wsj.com",
+      "nytimes.com",
+      "washingtonpost.com",
+      "guardian.com",
+      "theguardian.com",
+      "bloomberg.com",
+      "ft.com",
+      "economist.com",
+      "latimes.com",
+      "usatoday.com"
+    ]
+  },
+  "tier_3": {
+    "score": 6,
+    "description": "Cable news and specialized outlets",
+    "sources": [
+      "cnn.com",
+      "msnbc.com",
+      "foxnews.com",
+      "politico.com",
+      "thehill.com",
+      "vox.com",
+      "slate.com",
+      "salon.com",
+      "thedailybeast.com"
+    ]
+  },
+  "tier_4": {
+    "score": 4,
+    "description": "Tech and specialized publications",
+    "sources": [
+      "wired.com",
+      "arstechnica.com",
+      "theverge.com",
+      "techcrunch.com",
+      "engadget.com",
+      "gizmodo.com",
+      "mashable.com",
+      "venturebeat.com"
+    ]
+  },
+  "tier_5": {
+    "score": 3,
+    "description": "Regional and lesser-known sources",
+    "sources": [
+      "nypost.com",
+      "bostonglobe.com",
+      "chicagotribune.com",
+      "seattletimes.com",
+      "miamiherald.com",
+      "denverpost.com",
+      "startribune.com"
+    ]
+  },
+  "intellectual": {
+    "score": 9,
+    "description": "High-quality intellectual and cultural sources",
+    "sources": [
+      "theatlantic.com",
+      "newyorker.com",
+      "harpers.org",
+      "aeon.co",
+      "nautil.us",
+      "quantamagazine.org",
+      "theparisreview.org",
+      "lrb.co.uk",
+      "nybooks.com",
+      "theconversation.com",
+      "psyche.co",
+      "worksinprogress.co",
+      "knowablemagazine.org",
+      "publicdomainreview.org"
+    ]
+  },
+  "academic": {
+    "score": 10,
+    "description": "Academic and research sources",
+    "sources": [
+      "nature.com",
+      "science.org",
+      "sciencemag.org",
+      "pnas.org",
+      "cell.com",
+      "thelancet.com",
+      "nejm.org",
+      "jstor.org",
+      "arxiv.org",
+      "pubmed.ncbi.nlm.nih.gov"
+    ]
+  },
+  "blacklist": {
+    "score": 0,
+    "description": "Excluded sources - low quality or irrelevant",
+    "sources": [
+      "tribune.com.pk",
+      "timesofindia.indiatimes.com",
+      "hindustantimes.com",
+      "indianexpress.com",
+      "dailymail.co.uk",
+      "thesun.co.uk",
+      "mirror.co.uk",
+      "express.co.uk",
+      "breitbart.com",
+      "infowars.com",
+      "naturalnews.com",
+      "zerohedge.com",
+      "rt.com",
+      "sputniknews.com",
+      "globalresearch.ca",
+      "beforeitsnews.com",
+      "worldtruth.tv",
+      "yournewswire.com",
+      "buzzfeed.com",
+      "businessinsider.com",
+      "forbes.com/sites",
+      "medium.com",
+      "substack.com",
+      "patch.com"
+    ]
+  },
+  "config": {
+    "min_quality_score": 3,
+    "preferred_score_threshold": 6,
+    "max_items_per_source": 2,
+    "boost_recent_hours": 6,
+    "recency_weight": 1.2
+  }
+}

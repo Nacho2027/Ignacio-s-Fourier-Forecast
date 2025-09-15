@@ -195,8 +195,8 @@ class EmailCompiler:
                 "items": items
             }
 
-        # Generate subject line from top news stories
-        subject = self._generate_subject_line(date, sections=sections)
+        # Generate subject line from top news stories using AI
+        subject = await self._generate_subject_line(date, sections=sections)
         preview_text = self._generate_preview_text(sections, golden_thread)
         greeting = await self._generate_greeting(date, sections, golden_thread)
 
@@ -225,88 +225,57 @@ class EmailCompiler:
 
         return data
 
-    def _generate_subject_line(
+    async def _generate_subject_line(
         self,
         date: datetime,
         sections: Optional[Dict[Section, SectionSummaries]] = None,
     ) -> str:
-        """Generate compelling subject line from top news stories (40-60 chars)."""
-        import re
-        import random
+        """Generate compelling subject line using AI from top news stories."""
+        # Import AIService here to avoid circular imports
+        from src.services.ai_service import AIService
         
-        # Helper to find natural breaking point
-        def find_natural_break(text: str, max_len: int = 60) -> str:
-            if len(text) <= max_len:
-                return text
-            
-            # Look for natural breaks within the limit
-            # Priority: sentence end > clause break > phrase break
-            breakpoints = [
-                (r'[.!?]', 1),  # End of sentence (include punctuation)
-                (r'[—–-]', 0),   # Em dash, en dash, hyphen (break before)
-                (r'[:;]', 1),    # Colon or semicolon (include punctuation)
-                (r',(?=\s+(?:as|while|when|where|which|who))', 1),  # Comma before clause
-                (r',', 1),       # Any comma
-            ]
-            
-            for pattern, include_match in breakpoints:
-                matches = list(re.finditer(pattern, text[:max_len]))
-                if matches:
-                    last_match = matches[-1]
-                    break_pos = last_match.end() if include_match else last_match.start()
-                    result = text[:break_pos].strip()
-                    if len(result) >= 30:  # Ensure minimum length
-                        return result
-            
-            # No natural break found - try to complete the current word/thought
-            # Find the last complete word before the limit
-            words = text[:max_len].split()
-            if len(words) > 3:
-                # Try to include at least a meaningful phrase
-                for i in range(len(words) - 1, 2, -1):
-                    candidate = " ".join(words[:i+1])
-                    if len(candidate) <= 60:
-                        return candidate
-            
-            # Fallback: just truncate at word boundary
-            return " ".join(words[:4]) if len(words) > 3 else text[:max_len]
+        try:
+            if sections:
+                # Collect top stories from priority sections
+                top_stories = []
+                
+                # Priority sections for subject line
+                priority_sections = [Section.BREAKING_NEWS, Section.BUSINESS, Section.TECH_SCIENCE]
+                
+                for section in priority_sections:
+                    if section in sections and sections[section].summaries:
+                        for summary in sections[section].summaries[:2]:  # Top 2 from each
+                            if summary.headline:
+                                # Analyze impact based on keywords
+                                headline_lower = str(summary.headline).lower()
+                                impact_keywords = ['breakthrough', 'crisis', 'surge', 'plunge', 'historic', 
+                                                 'unprecedented', 'major', 'critical', 'emergency', 'exclusive',
+                                                 'first', 'largest', 'billion', 'trillion', 'revolutionary']
+                                
+                                impact = "high" if any(keyword in headline_lower for keyword in impact_keywords) else "normal"
+                                
+                                top_stories.append({
+                                    'headline': str(summary.headline),
+                                    'source': str(summary.source) if summary.source else '',
+                                    'impact': impact
+                                })
+                
+                if top_stories:
+                    # Use AI to generate subject line
+                    ai_service = AIService()
+                    subject = await ai_service.generate_subject_line(top_stories)
+                    
+                    # Validate the AI-generated subject
+                    if subject and 30 <= len(subject) <= 70:
+                        self.logger.info(f"Using AI-generated subject: {subject}")
+                        return subject
+                    else:
+                        self.logger.warning(f"AI subject invalid length ({len(subject)} chars), using fallback")
         
-        # Generate from top news stories
-        if sections:
-            # Collect top stories from Breaking News, Business, and Tech sections
-            top_stories = []
-            
-            # Priority sections for subject line
-            priority_sections = [Section.BREAKING_NEWS, Section.BUSINESS, Section.TECH_SCIENCE]
-            
-            for section in priority_sections:
-                if section in sections and sections[section].summaries:
-                    for summary in sections[section].summaries[:2]:  # Top 2 from each
-                        if summary.headline:
-                            top_stories.append(str(summary.headline))
-            
-            if top_stories:
-                # Pick the most newsworthy story based on keywords
-                # Prioritize stories with impact words
-                impact_keywords = ['breakthrough', 'crisis', 'surge', 'plunge', 'historic', 
-                                 'unprecedented', 'major', 'critical', 'emergency', 'exclusive']
-                
-                best_story = top_stories[0]
-                for story in top_stories:
-                    story_lower = story.lower()
-                    if any(keyword in story_lower for keyword in impact_keywords):
-                        best_story = story
-                        break
-                
-                # Clean up the headline for use as subject
-                # Remove source attributions like "- Reuters" or "| CNN"
-                import re
-                cleaned = re.sub(r'\s*[-|]\s*(Reuters|AP|CNN|BBC|WSJ|Bloomberg|NYT|FT)\s*$', '', best_story)
-                
-                # Ensure it's compelling and complete
-                return find_natural_break(cleaned, 60)
+        except Exception as e:
+            self.logger.error(f"AI subject generation failed: {e}, using fallback")
         
-        # Fallback: Default subjects (complete thoughts) with more variety
+        # Fallback: Default subjects with more variety
         default_subjects = [
             "Today's Tech and Market Convergence",
             "AI Breakthroughs Shape Tomorrow",

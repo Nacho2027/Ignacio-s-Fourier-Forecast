@@ -116,12 +116,32 @@ gpt5_golden_thread:
   system: |
     Pattern recognition specialist finding genuine connections across content.
     Identify themes only if confidence >0.75.
+    Focus on deep, non-obvious connections that reveal underlying patterns.
     Call "return_golden_thread" function.
   template: |
     Find connecting themes across all sections:
     {all_content_json}
     
-    Return: thread (or null), confidence score.
+    REQUIREMENTS:
+    - Look for deep, systemic connections across multiple stories
+    - Focus on underlying patterns, not surface-level similarities
+    - Prefer concrete insights over abstract philosophizing
+    - Connect disparate domains (tech + politics, science + business, etc.)
+    - Identify trends that span multiple sectors
+    - Highlight cause-effect relationships across different news areas
+    
+    GOOD golden threads:
+    - "Supply chain disruptions in chips mirror labor shortages in healthcare: both reveal fragility of just-in-time systems"
+    - "From Meta's VR push to NASA's Mars mission: humanity's simultaneous escape to virtual and physical frontiers"
+    - "Banking crisis meets AI regulation: institutions struggling to govern exponential change"
+    
+    AVOID:
+    - Generic observations like "everything is connected"
+    - Overly philosophical musings about paradoxes
+    - Surface-level keyword matches
+    - Forced connections with low confidence
+    
+    Return: thread (or null if confidence <0.75), confidence score.
 
 gpt5_serendipity_engine:
   system: |
@@ -142,6 +162,7 @@ gpt5_morning_greeting:
   system: |
     Creative greeting generator connecting today's news themes in engaging ways.
     Create varied, contextually relevant openers that spark curiosity.
+    IMPORTANT: Avoid duplicating the golden thread theme - focus on different aspects of the news.
     Call "return_greeting" function.
   template: |
     Create morning greeting for {date_str} reflecting newsletter themes.
@@ -149,16 +170,55 @@ gpt5_morning_greeting:
     CONTENT:
     {newsletter_content_json}
     
-    GOLDEN THREAD:
+    GOLDEN THREAD (DO NOT duplicate this theme in greeting):
     {golden_thread}
     
-    Create a greeting that connects to today's specific news. Be creative and vary your approach.
+    REQUIREMENTS:
+    - Create a greeting that connects to today's specific news
+    - DO NOT repeat or paraphrase the golden thread insight
+    - Focus on a DIFFERENT story, angle, or theme from the newsletter
+    - If golden thread discusses paradoxes, discuss concrete developments
+    - If golden thread is philosophical, be practical and specific
+    - If golden thread connects themes, highlight individual breakthroughs
     
     Examples of different greeting styles (but create your own unique greeting):
     - "Good morning! As Feynman observed, 'Study hard what interests you most.' Today's quantum computing advances..."
     - "Good morning! Today's convergence of AI and healthcare reveals a profound shift in how we approach human wellness."
     - "Good morning! What connects today's chip shortage to Renaissance patronage? Both show how scarcity drives innovation."
     - "Good morning! History rhymes: the 1960s space race transformed computing, today's AI race transforms everything."
+    
+    Remember: The greeting should complement, not duplicate, the golden thread.
+
+gpt5_subject_line:
+  system: |
+    Email subject line generator creating compelling, complete headlines.
+    Craft attention-grabbing subjects that capture the essence of today's most important news.
+    Call "return_subject" function with a complete, non-truncated subject line.
+  template: |
+    Generate email subject line from today's top stories.
+    
+    TOP STORIES:
+    {top_stories_json}
+    
+    REQUIREMENTS:
+    - Length: 40-60 characters ideal, 70 max
+    - Must be a COMPLETE thought (no truncation mid-sentence)
+    - Focus on the most newsworthy or impactful story
+    - Be specific and intriguing, not generic
+    - No source attributions (remove "- Reuters", "| CNN" etc)
+    
+    GOOD examples:
+    - "OpenAI Unveils GPT-5 with Reasoning Capabilities"
+    - "Fed Signals Rate Cuts as Inflation Cools"
+    - "Apple's Quantum Chip Disrupts Computing"
+    - "Climate Breakthrough: Fusion Powers Texas Grid"
+    
+    BAD examples (truncated/incomplete):
+    - "London protest organized by far"
+    - "Scientists discover new method for"
+    - "Breaking: Major announcement from"
+    
+    Generate a complete, compelling subject line that makes readers want to open the email.
     - "Good morning! The paradox emerges: as systems grow more complex, solutions become surprisingly simple."
     - "Good morning! Three unrelated stories today share one truth: infrastructure determines possibility."
     
