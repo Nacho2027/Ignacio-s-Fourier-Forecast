@@ -419,8 +419,9 @@ class ContentAggregator:
             ]
             # Validate sources BEFORE other filtering
             items_validated = self._validate_sources(items_raw, ["wsj.com", "axios.com"], "Business")
-            items = self._filter_items(items_validated, max_age_days=2)  # Business news can be 1-2 days old
-            self.logger.info("Business: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.BUSINESS, max_age_days=2, min_items=3)
+            self.logger.info("Business: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             return FetchResult("llmlayer", Section.BUSINESS, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
@@ -467,8 +468,9 @@ class ContentAggregator:
                 ["technologyreview.com", "spectrum.ieee.org", "quantamagazine.org", "tldr.tech"],
                 "Tech/Science"
             )
-            items = self._filter_items(items_validated, max_age_days=7)  # Tech news should be recent (within a week)
-            self.logger.info("Tech/Science: %d items after filtering from %d raw", len(items), len(items_raw))
+            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.TECH_SCIENCE, max_age_days=7, min_items=3)
+            self.logger.info("Tech/Science: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             return FetchResult("llmlayer", Section.TECH_SCIENCE, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
@@ -500,7 +502,8 @@ class ContentAggregator:
                 ["ycombinator.com", "firstround.com", "review.firstround.com"],
                 "Startup"
             )
-            items = self._filter_items(items_validated, max_age_days=14)  # Keep content relatively recent
+            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.STARTUP, max_age_days=14, min_items=3)
             return FetchResult("llmlayer", Section.STARTUP, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
@@ -549,8 +552,9 @@ class ContentAggregator:
                 "bbc.com", "bbc.co.uk", "propublica.org", "politico.com"
             ]
             items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
-            items = self._filter_items(items_validated, max_age_days=2)  # Politics needs recent updates
-            self.logger.info("Politics: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=2, min_items=3)
+            self.logger.info("Politics: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             
             # If we still have too few items, try a fallback search
             if len(items) < 3:
@@ -586,7 +590,8 @@ class ContentAggregator:
                 
                 # Re-filter combined items
                 items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
-                items = self._filter_items(items_validated, max_age_days=3)  # Allow 3 days in fallback
+                # Use multi-stage pipeline even in fallback
+                items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=3, min_items=3)
                 self.logger.info(f"Politics: After fallback, {len(items)} final items from {len(items_raw)} total")
             
             return FetchResult("llmlayer", Section.POLITICS, items, asyncio.get_event_loop().time() - start)
@@ -643,8 +648,9 @@ class ContentAggregator:
                 ["miamiherald.com", "news.cornell.edu", "cornellsun.com"],
                 "Local"
             )
-            items = self._filter_items(items_validated, max_age_days=14)  # Extended to 14 days to ensure Cornell coverage
-            self.logger.info("Local: %d items after validation and filtering from %d raw", len(items), len(items_raw))
+            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.LOCAL, max_age_days=14, min_items=3)
+            self.logger.info("Local: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             return FetchResult("llmlayer", Section.LOCAL, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return FetchResult("llmlayer", Section.LOCAL, [], asyncio.get_event_loop().time() - start, error=str(e))
