@@ -1,40 +1,60 @@
-IGNACIO'S FOURIER FORECAST
-{{ date }}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+════════════════════════════════════════════════════════════════════════
+
+                    IGNACIO'S FOURIER FORECAST
+                         {{ date|upper }}
+
+════════════════════════════════════════════════════════════════════════
 
 {{ greeting }}
 
 {% if golden_thread %}
-TODAY'S THREAD
-──────────────
+────────────────────────────────────────────────────────────────────────
+                           GOLDEN THREAD
+────────────────────────────────────────────────────────────────────────
+
 {{ golden_thread }}
 
 {% endif %}
 {% for section_name, section_data in sections.items() %}
-{{ section_name|upper|replace('_', ' ') }}
-──────────────────────────────────────────
+{% if section_data.items %}
+════════════════════════════════════════════════════════════════════════
+                    {{ section_name|upper|replace('_', ' ') }}
+════════════════════════════════════════════════════════════════════════
 {% if section_data.intro_text %}
+
 {{ section_data.intro_text }}
-
 {% endif %}
-{% for item in section_data['items'] %}
-▸ {{ item.headline }}
-  {{ item.summary }}
-  [{{ item.source }} • {{ item.time }}]
-{% if not loop.last %}
 
+{% for item in section_data['items'] %}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ item.headline|upper }}
+
+{{ item.summary }}
+
+{{ item.source }} · {{ item.time if item.time else 'Today' }}
+{% if item.source_url %}
+Read more: {{ item.source_url }}
 {% endif %}
 {% endfor %}
 
+{% endif %}
 {% endfor %}
 {% if delightful_surprise %}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+════════════════════════════════════════════════════════════════════════
+                        TODAY'S REFLECTION
+════════════════════════════════════════════════════════════════════════
 
-{{ delightful_surprise.content }}
-{% if delightful_surprise.attribution %}— {{ delightful_surprise.attribution }}{% endif %}
+"{{ delightful_surprise.content }}"
+
+{% if delightful_surprise.attribution %}                        — {{ delightful_surprise.attribution }}{% endif %}
 
 {% endif %}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+════════════════════════════════════════════════════════════════════════
 
-{{ estimated_read_time }} minute read • {{ total_items }} stories
-Transforming chaos into clarity, daily at 5:30 AM ET
+                      {{ total_items }} STORIES
+                   {{ estimated_read_time }} MINUTE READ
+                   
+              Signal from noise, distilled daily.
+
+════════════════════════════════════════════════════════════════════════
