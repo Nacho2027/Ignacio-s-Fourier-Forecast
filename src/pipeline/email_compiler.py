@@ -230,48 +230,40 @@ class EmailCompiler:
         date: datetime,
         sections: Optional[Dict[Section, SectionSummaries]] = None,
     ) -> str:
-        """Generate compelling subject line using AI from top news stories."""
+        """Generate compelling subject line using AI from complete newsletter content."""
         # Import AIService here to avoid circular imports
         from src.services.ai_service import AIService
-        
+
         try:
             if sections:
-                # Collect top stories from priority sections
-                top_stories = []
-                
-                # Priority sections for subject line
-                priority_sections = [Section.BREAKING_NEWS, Section.BUSINESS, Section.TECH_SCIENCE]
-                
-                for section in priority_sections:
-                    if section in sections and sections[section].summaries:
-                        for summary in sections[section].summaries[:2]:  # Top 2 from each
+                # Build complete newsletter content for subject line generation
+                newsletter_content = {}
+
+                for section, section_data in sections.items():
+                    if section_data.summaries:
+                        section_items = []
+                        for summary in section_data.summaries[:3]:  # Top 3 from each section
                             if summary.headline:
-                                # Analyze impact based on keywords
-                                headline_lower = str(summary.headline).lower()
-                                impact_keywords = ['breakthrough', 'crisis', 'surge', 'plunge', 'historic', 
-                                                 'unprecedented', 'major', 'critical', 'emergency', 'exclusive',
-                                                 'first', 'largest', 'billion', 'trillion', 'revolutionary']
-                                
-                                impact = "high" if any(keyword in headline_lower for keyword in impact_keywords) else "normal"
-                                
-                                top_stories.append({
+                                section_items.append({
                                     'headline': str(summary.headline),
                                     'source': str(summary.source) if summary.source else '',
-                                    'impact': impact
+                                    'summary': str(summary.summary) if hasattr(summary, 'summary') else ''
                                 })
-                
-                if top_stories:
-                    # Use AI to generate subject line
+                        if section_items:
+                            newsletter_content[str(section)] = section_items
+
+                if newsletter_content:
+                    # Use AI to generate subject line from complete content
                     ai_service = AIService()
-                    subject = await ai_service.generate_subject_line(top_stories)
-                    
-                    # Validate the AI-generated subject
-                    if subject and 30 <= len(subject) <= 70:
+                    subject = await ai_service.generate_subject_line(newsletter_content)
+
+                    # No character limit validation - just ensure we got something
+                    if subject:
                         self.logger.info(f"Using AI-generated subject: {subject}")
                         return subject
                     else:
-                        self.logger.warning(f"AI subject invalid length ({len(subject)} chars), using fallback")
-        
+                        self.logger.warning(f"AI subject generation returned empty, using fallback")
+
         except Exception as e:
             self.logger.error(f"AI subject generation failed: {e}, using fallback")
         

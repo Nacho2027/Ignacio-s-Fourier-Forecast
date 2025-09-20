@@ -55,7 +55,7 @@ class PipelineConfig:
     # Timing
     execution_time: time  # 5:00 AM ET
     delivery_time: time   # 5:30 AM ET
-    max_execution_minutes: int = 20  # Reasonable time for full pipeline execution
+    max_execution_minutes: int = 45  # Extended time for rate-limited LLMLayer cascading calls
 
     # Paths
     database_path: str = "data/newsletter.db"
@@ -254,37 +254,60 @@ class MainPipeline:
         """
         self.metrics = PipelineMetrics(start_time=datetime.now())
         try:
+            self.logger.info(f"⏰ Starting pipeline with {self.config.max_execution_minutes} minute timeout")
             await asyncio.wait_for(self._execute_pipeline(), timeout=self.config.max_execution_minutes * 60)
+            self.logger.info("🎉 Pipeline completed successfully!")
             return True
+        except asyncio.TimeoutError as e:
+            self.logger.error(f"⏰ Pipeline timeout after {self.config.max_execution_minutes} minutes")
+            self.logger.error("   This may indicate rate limiting issues or service delays")
+            raise
+        except Exception as e:
+            self.logger.error(f"💥 Pipeline failed with error: {e}")
+            self.logger.error(f"   Error type: {type(e).__name__}")
+            if self.metrics:
+                self.logger.error(f"   Failed after {(datetime.now() - self.metrics.start_time).total_seconds():.1f}s")
+            raise
         finally:
             if self.metrics:
                 self.metrics.end_time = datetime.now()
+                total_time = self.metrics.total_time()
+                self.logger.info(f"📊 Pipeline total execution time: {total_time:.1f}s")
 
     async def _execute_pipeline(self) -> None:
+        self.logger.info("🚀 Starting daily newsletter pipeline execution")
+
         if not self.services:
+            self.logger.info("🔧 Initializing services...")
             await self.initialize_services()
+            self.logger.info("✅ Services initialized successfully")
 
         # Clear old cache entries to prevent cross-day duplicates
         # Only keep items from last 3 days for deduplication purposes
         cache_service = self.services.get('cache')
         if cache_service:
             try:
+                self.logger.info("🧹 Cleaning up old cache entries...")
                 removed = await cache_service.cleanup(days=3)
-                logging.info(f"Cleared {removed} old cache entries before newsletter generation")
+                self.logger.info(f"✅ Cleared {removed} old cache entries before newsletter generation")
             except Exception as e:
-                logging.warning(f"Failed to cleanup old cache entries: {e}")
+                self.logger.warning(f"⚠️ Failed to cleanup old cache entries: {e}")
 
         # Stage 1: Fetch
+        self.logger.info("📥 Stage 1: Starting content fetch...")
         start = asyncio.get_event_loop().time()
         raw_content = await self._fetch_content()
         self.metrics.fetch_time = asyncio.get_event_loop().time() - start
         self.metrics.fetch_success = True
+        self.logger.info(f"✅ Stage 1 completed: Fetched {sum(len(v) for v in raw_content.values())} items in {self.metrics.fetch_time:.2f}s")
 
         # Stage 2: Deduplicate
+        self.logger.info("🔍 Stage 2: Starting content deduplication...")
         start = asyncio.get_event_loop().time()
         deduped = await self._deduplicate_content(raw_content)
         self.metrics.dedup_time = asyncio.get_event_loop().time() - start
         self.metrics.dedup_success = True
+        self.logger.info(f"✅ Stage 2 completed: {sum(len(v) for v in deduped.values())} items after deduplication in {self.metrics.dedup_time:.2f}s")
         # Capture detailed dedup stats
         try:
             stats = self.services['deduplication'].get_statistics()  # type: ignore[attr-defined]
@@ -297,40 +320,65 @@ class MainPipeline:
             pass
 
         # Stage 3: Rank & Select
+        self.logger.info("⭐ Stage 3: Starting content ranking and selection...")
         start = asyncio.get_event_loop().time()
         selected = await self._rank_and_select(deduped)
         self.metrics.rank_time = asyncio.get_event_loop().time() - start
         self.metrics.items_selected = sum(len(v) for v in selected.values())
+        self.logger.info(f"✅ Stage 3 completed: Selected {self.metrics.items_selected} top items in {self.metrics.rank_time:.2f}s")
 
         # Stage 4: Summaries
+        self.logger.info("📝 Stage 4: Starting content summarization...")
         start = asyncio.get_event_loop().time()
         summaries = await self._generate_summaries(selected)
         self.metrics.summarize_time = asyncio.get_event_loop().time() - start
         self.metrics.summary_success = True
+        self.logger.info(f"✅ Stage 4 completed: Generated summaries in {self.metrics.summarize_time:.2f}s")
 
         # Stage 5: Synthesis
+        self.logger.info("🧵 Stage 5: Starting golden thread synthesis...")
         start = asyncio.get_event_loop().time()
         golden_thread, surprise = await self._synthesize_insights(summaries)
         self.metrics.synthesis_time = asyncio.get_event_loop().time() - start
         self.metrics.synthesis_success = True
+        self.logger.info(f"✅ Stage 5 completed: Generated synthesis in {self.metrics.synthesis_time:.2f}s")
 
         # Stage 6: Compile
+        self.logger.info("📧 Stage 6: Starting email compilation...")
         start = asyncio.get_event_loop().time()
         compiled = await self._compile_email(summaries, golden_thread, surprise)
         self.metrics.compile_time = asyncio.get_event_loop().time() - start
         self.metrics.compile_success = True
+        self.logger.info(f"✅ Stage 6 completed: Compiled email in {self.metrics.compile_time:.2f}s")
 
         # Stage 7: Send
+        self.logger.info("📮 Stage 7: Sending newsletter...")
         start = asyncio.get_event_loop().time()
         sent = await self._send_newsletter(compiled)
         self.metrics.send_time = asyncio.get_event_loop().time() - start
         self.metrics.send_success = bool(sent)
+        if sent:
+            self.logger.info(f"✅ Stage 7 completed: Newsletter sent successfully in {self.metrics.send_time:.2f}s")
+        else:
+            self.logger.error(f"❌ Stage 7 failed: Newsletter sending failed after {self.metrics.send_time:.2f}s")
 
         # Stage 8: Cache update (non-critical)
+        self.logger.info("💾 Stage 8: Updating cache with selected items...")
         try:
             await self._update_cache(selected)
-        except Exception:
-            pass
+            self.logger.info("✅ Stage 8 completed: Cache updated successfully")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Stage 8 failed: Cache update failed - {e} (non-critical)")
+
+        # Final pipeline summary
+        if self.metrics:
+            total_time = (datetime.now() - self.metrics.start_time).total_seconds()
+            self.logger.info("🏁 Pipeline Summary:")
+            self.logger.info(f"   • Total time: {total_time:.1f}s")
+            self.logger.info(f"   • Items fetched: {self.metrics.items_fetched}")
+            self.logger.info(f"   • Items after dedup: {self.metrics.items_after_dedup}")
+            self.logger.info(f"   • Items selected: {self.metrics.items_selected}")
+            self.logger.info(f"   • Stage times: Fetch={self.metrics.fetch_time:.1f}s, Dedup={self.metrics.dedup_time:.1f}s, Rank={self.metrics.rank_time:.1f}s, Summary={self.metrics.summarize_time:.1f}s, Synthesis={self.metrics.synthesis_time:.1f}s, Compile={self.metrics.compile_time:.1f}s, Send={self.metrics.send_time:.1f}s")
 
     async def _fetch_content(self) -> Dict[Any, Any]:
         aggregator: ContentAggregator = self.services['aggregator']
@@ -375,7 +423,7 @@ class MainPipeline:
                         id=f"{section}:{idx}",
                         url=url,
                         headline=headline,
-                        content=text,
+                        summary_text=text,
                         source=source,
                         section=section,
                         published_date=published_dt,
@@ -482,7 +530,7 @@ class MainPipeline:
                             headline=item.get("headline", "Daily Reading"),
                             url=item.get("url", ""),
                             source=item.get("source", "USCCB Daily Readings"),
-                            content=item.get("content", ""),
+                            summary_text=item.get("summary_text", ""),
                             section=Section.SCRIPTURE,
                             published_date=published_date,
                             # Perfect scores for Scripture
@@ -514,7 +562,7 @@ class MainPipeline:
 
     async def _compile_email(self, summaries: Dict[Any, Any], golden_thread: Any, surprise: Any) -> Any:
         compiler: EmailCompiler = self.services['compiler']
-        
+
         # Ensure we have summaries to compile
         if not summaries:
             self.logger.error("❌ No summaries to compile - summaries dict is empty")
@@ -529,17 +577,31 @@ class MainPipeline:
                     intro_text="No breaking news available at this time."
                 )
             }
-        
-        compiled = await compiler.compile_newsletter(summaries, golden_thread, surprise)
-        if not getattr(compiled, 'is_valid', False):
-            self.logger.error(f"Email compilation failed: {getattr(compiled, 'validation_errors', [])}")
-            # Log what we tried to compile for debugging
-            self.logger.debug(f"Attempted to compile with {len(summaries)} sections")
-            for section, summary in summaries.items():
-                if hasattr(summary, 'summaries'):
-                    self.logger.debug(f"  {section}: {len(summary.summaries)} items")
-            raise PipelineError(f"Email compilation failed: {getattr(compiled, 'validation_errors', [])}")
-        return compiled
+
+        self.logger.info(f"📧 Compiling newsletter with {len(summaries)} sections...")
+        try:
+            compiled = await compiler.compile_newsletter(summaries, golden_thread, surprise)
+            if not getattr(compiled, 'is_valid', False):
+                validation_errors = getattr(compiled, 'validation_errors', [])
+                self.logger.error(f"❌ Email compilation validation failed:")
+                for error in validation_errors:
+                    self.logger.error(f"   • {error}")
+                # Log what we tried to compile for debugging
+                self.logger.info(f"📋 Compilation attempted with {len(summaries)} sections:")
+                for section, summary in summaries.items():
+                    if hasattr(summary, 'summaries'):
+                        self.logger.info(f"   • {section}: {len(summary.summaries)} items")
+                raise PipelineError(f"Email compilation failed: {validation_errors}")
+
+            self.logger.info(f"✅ Email compiled successfully: {getattr(compiled, 'word_count', 0)} words")
+            return compiled
+
+        except Exception as e:
+            self.logger.error(f"💥 Email compilation error: {e}")
+            self.logger.error(f"   Error type: {type(e).__name__}")
+            if "CSS" in str(e):
+                self.logger.error("   This appears to be a CSS validation error - check template formatting")
+            raise
 
     async def _send_newsletter(self, compiled_email: Any) -> bool:
         if self.config.dry_run:
@@ -566,7 +628,7 @@ class MainPipeline:
                         source=getattr(it, 'source', ''),
                         section=getattr(it, 'section', section),
                         headline=getattr(it, 'headline', ''),
-                        content=getattr(it, 'content', ''),
+                        summary_text=getattr(it, 'summary_text', ''),
                         url=getattr(it, 'url', ''),
                         published_date=getattr(it, 'published_date', datetime.now()),
                         metadata={},

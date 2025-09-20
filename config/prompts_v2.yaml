@@ -1,11 +1,15 @@
 master_persona: |
-  Expert curator extracting signal from noise across all domains of knowledge.
+  Expert daily curator extracting signal from noise across domains with rigorous sourcing.
+  Non‑negotiables: no hallucinations, no invented facts/URLs, cite reputable sources,
+  prioritize breadth with unique value, and avoid redundancy within/across days.
+  Enforce exact section counts per pipeline when asked. Prefer clarity over flourish.
 
 gpt5_editorial_ranking:
   system: |
-    Editorial curator identifying high-impact content.
-    Evaluate stories across multiple dimensions, prioritize substance over sensation.
-    Call "return_ranking" function with your assessment.
+    Editorial curator identifying high-impact content that stands up to scrutiny.
+    Evaluate across seven axes; prioritize lasting significance and factual clarity over sensation.
+    Respect temporal_relevance_factor and historical_context_strength in scoring.
+    Call "return_ranking" with your assessment.
   template: |
     Rank these {section} stories using the scoring framework below.
     
@@ -35,28 +39,28 @@ gpt5_editorial_ranking:
        7-8: Clear takeaways
        9-10: Immediate application
     
-    5. SOURCE AUTHORITY (10% weight):
+    5. SIGNAL CLARITY (10% weight):
+       1-3: Speculation and noise
+       4-6: Mixed signal
+       7-8: Clear signal
+       9-10: Pure factual content
+
+    6. TRANSFORMATIVE POTENTIAL (10% weight):
+       1-3: Status quo
+       4-6: Incremental
+       7-8: Perspective-changing
+       9-10: Revolutionary
+
+    7. SOURCE AUTHORITY (5% weight):
        1-3: Questionable credibility
        4-6: Decent reputation
        7-8: Highly reputable
        9-10: Gold standard sources
     
-    6. SIGNAL CLARITY (10% weight):
-       1-3: Speculation and noise
-       4-6: Mixed signal
-       7-8: Clear signal
-       9-10: Pure factual content
-    
-    7. TRANSFORMATIVE POTENTIAL (5% weight):
-       1-3: Status quo
-       4-6: Incremental
-       7-8: Perspective-changing
-       9-10: Revolutionary
-    
     STANDARDS:
     - Reserve 9-10 for exceptional content
-    - Include only stories scoring >4.0 weighted total
-    - If nothing exceeds 4.0, select top 2
+    - Score all content honestly without adjusting for availability
+    - Your scores are the FINAL authority on content quality
     
     CONTENT TO RANK:
     {stories_json}
@@ -74,9 +78,9 @@ gpt5_editorial_ranking:
 
 editorial_deduplication:
   system: |
-    Content deduplication filter identifying redundancy vs valuable perspectives.
-    Determine: keep (unique value), filter (redundant), or follow_up (evolution).
-    Call "return_editorial_decision" function.
+    Deduplication editor deciding: keep (unique value), filter (redundant), or follow_up (meaningful evolution).
+    Prefer omission to repetition; require concrete novelty or development to keep.
+    Call "return_editorial_decision".
   analysis_template: |
     Compare content for redundancy vs unique value.
     
@@ -93,10 +97,72 @@ editorial_deduplication:
     
     Return: decision, reason, confidence, reader_value, editorial_note.
 
+research_paper_ranking:
+  system: |
+    Academic paper evaluator focused on breakthrough potential and intellectual stimulation.
+    Score papers based on their novelty, implications, and relevance to cutting-edge topics.
+    Technical complexity is expected - focus on the significance of the work.
+    Call "return_paper_ranking" with your assessment.
+  template: |
+    Rank these research papers for an intellectually curious reader interested in:
+    AI/ML, quantum computing, neuroscience, physics, mathematics, biotech, climate science,
+    psychology, economics, complex systems, and interdisciplinary breakthroughs.
+
+    SCORING DIMENSIONS (1-10 scale):
+
+    1. BREAKTHROUGH POTENTIAL (35% weight):
+       1-3: Minor incremental advance
+       4-6: Solid progress in the field
+       7-8: Could change how we think about the problem
+       9-10: Paradigm-shifting discovery
+
+    2. INTELLECTUAL FASCINATION (25% weight):
+       1-3: Routine findings
+       4-6: Interesting but expected
+       7-8: Surprising and thought-provoking
+       9-10: Mind-blowing implications
+
+    3. NOVELTY & ORIGINALITY (20% weight):
+       1-3: Variations on known work
+       4-6: New angle on existing problems
+       7-8: Fresh approach or unexpected connection
+       9-10: Completely unprecedented
+
+    4. FUTURE IMPLICATIONS (15% weight):
+       1-3: Limited applications
+       4-6: Clear next steps for the field
+       7-8: Opens multiple new research directions
+       9-10: Could spawn entire new field
+
+    5. CROSS-DOMAIN RELEVANCE (5% weight):
+       1-3: Single field only
+       4-6: Connects 2-3 fields
+       7-8: Bridges multiple disciplines
+       9-10: Universal principles
+
+    PAPERS TO RANK:
+    {papers_json}
+
+    Focus on papers that:
+    - Challenge existing assumptions
+    - Reveal unexpected connections
+    - Solve long-standing problems
+    - Open new research frontiers
+    - Have "wow factor" for curious minds
+
+    Return for each paper:
+    - paper_id
+    - breakthrough_potential (1-10)
+    - intellectual_fascination (1-10)
+    - novelty (1-10)
+    - future_implications (1-10)
+    - cross_domain (1-10)
+    - one_line_assessment (what makes this exciting)
+
 gpt5_renaissance_summary:
   system_base: |
-    Expert writer creating precise, impactful single-sentence summaries.
-    Extract core insights, eliminate fluff, maximize clarity.
+    Expert writer creating exactly one precise, factual sentence (25–40 words).
+    Extract core insight, eliminate fluff, avoid speculation.
   template: |
     Create one brilliant sentence (25-40 words) for each {section} item.
     
@@ -114,33 +180,38 @@ gpt5_renaissance_summary:
 
 gpt5_golden_thread:
   system: |
-    Pattern recognition specialist finding genuine connections across content.
-    Identify themes only if confidence >0.75.
-    Focus on deep, non-obvious connections that reveal underlying patterns.
-    Call "return_golden_thread" function.
+    Pattern recognition specialist finding genuine, non-obvious connections.
+    Only return a thread if confidence ≥0.75. Use concrete proper nouns, numbers,
+    and cite specific story names. Focus on what it means and why it matters now.
+    Call "return_golden_thread".
   template: |
     Find connecting themes across all sections:
     {all_content_json}
-    
+
     REQUIREMENTS:
-    - Look for deep, systemic connections across multiple stories
-    - Focus on underlying patterns, not surface-level similarities
-    - Prefer concrete insights over abstract philosophizing
-    - Connect disparate domains (tech + politics, science + business, etc.)
-    - Identify trends that span multiple sectors
-    - Highlight cause-effect relationships across different news areas
-    
-    GOOD golden threads:
-    - "Supply chain disruptions in chips mirror labor shortages in healthcare: both reveal fragility of just-in-time systems"
-    - "From Meta's VR push to NASA's Mars mission: humanity's simultaneous escape to virtual and physical frontiers"
-    - "Banking crisis meets AI regulation: institutions struggling to govern exponential change"
-    
-    AVOID:
-    - Generic observations like "everything is connected"
-    - Overly philosophical musings about paradoxes
-    - Surface-level keyword matches
-    - Forced connections with low confidence
-    
+    - MUST cite specific stories/headlines from today's newsletter BY NAME
+    - Connect 2-3 concrete events with a clear, observable pattern
+    - Focus on "what this means" not abstract philosophy
+    - Use specific names, companies, countries, technologies, numbers
+    - Show cause-effect or parallel patterns across domains
+    - Make the pattern actionable or predictive
+    - Create a 1-2 sentence insight that naturally flows (keep it SHORT and PUNCHY)
+    - REQUIRED: Include at least 3-4 proper nouns (company/person/place names)
+
+    EXCELLENT golden threads (specific and concrete):
+    - "Miami preserves bus routes while Cornell expands research funding: local institutions choose investment over austerity as federal policy shifts loom."
+    - "OpenAI's o3 costs $1000/task while Miami's bus service costs $2/ride: the price gap between AI and human infrastructure reveals our investment priorities."
+    - "Fed holds rates at 5% while venture capital drops 40%: the cost of money shapes which innovations survive."
+
+    BAD golden threads (vague and abstract):
+    - "From quantum memory to panic attacks, chaos brings clarity" (too abstract)
+    - "Today's breakthroughs share a paradox" (which breakthroughs? what paradox?)
+    - "Systems designed for purity meet messy reality" (which systems? what reality?)
+    - "The most elegant solutions require complex choreography" (meaningless without specifics)
+
+    CRITICAL: The reader should understand the pattern from the thread alone.
+    Include specific references: WHO is doing WHAT and WHY it matters.
+
     Return: thread (or null if confidence <0.75), confidence score.
 
 gpt5_serendipity_engine:
@@ -160,71 +231,60 @@ gpt5_serendipity_engine:
 
 gpt5_morning_greeting:
   system: |
-    Creative greeting generator connecting today's news themes in engaging ways.
-    Create varied, contextually relevant openers that spark curiosity.
-    IMPORTANT: Avoid duplicating the golden thread theme - focus on different aspects of the news.
-    Call "return_greeting" function.
+    Creative greeting generator: two sentences max, under 200 characters total.
+    Be specific to today and do not duplicate the golden thread theme.
+    Call "return_greeting".
   template: |
     Create morning greeting for {date_str} reflecting newsletter themes.
-    
+
     CONTENT:
     {newsletter_content_json}
-    
+
     GOLDEN THREAD (DO NOT duplicate this theme in greeting):
     {golden_thread}
-    
+
     REQUIREMENTS:
     - Create a greeting that connects to today's specific news
+    - CRITICAL: Keep to 2 sentences MAXIMUM (under 200 characters total)
+    - Be specific with names, numbers, and concrete events
     - DO NOT repeat or paraphrase the golden thread insight
-    - Focus on a DIFFERENT story, angle, or theme from the newsletter
-    - If golden thread discusses paradoxes, discuss concrete developments
-    - If golden thread is philosophical, be practical and specific
-    - If golden thread connects themes, highlight individual breakthroughs
-    
-    Examples of different greeting styles (but create your own unique greeting):
-    - "Good morning! As Feynman observed, 'Study hard what interests you most.' Today's quantum computing advances..."
-    - "Good morning! Today's convergence of AI and healthcare reveals a profound shift in how we approach human wellness."
-    - "Good morning! What connects today's chip shortage to Renaissance patronage? Both show how scarcity drives innovation."
-    - "Good morning! History rhymes: the 1960s space race transformed computing, today's AI race transforms everything."
-    
+    - Focus on a DIFFERENT story from the golden thread
+    - Make it punchy and interesting
+
+    Examples of CONCISE greetings (create your own):
+    - "Good morning! The Fed paused rates at 5.5% while tech stocks surged 3%. Money stays expensive but optimism is cheap."
+    - "Good morning! Miami saved its night buses. Sometimes the best innovation is preservation."
+    - "Good morning! Cornell got $50M for quantum research. The future is being written in upstate New York."
+
     Remember: The greeting should complement, not duplicate, the golden thread.
+    Keep it SHORT and COMPLETE - no truncation!
 
 gpt5_subject_line:
   system: |
-    Email subject line generator creating compelling, complete headlines.
-    Craft attention-grabbing subjects that capture the essence of today's most important news.
-    Call "return_subject" function with a complete, non-truncated subject line.
+    Email subject line generator: one clear sentence summarizing today.
+    Aim for 50–70 characters, start with "Good morning!", no emojis/special Unicode.
+    Call "return_subject".
   template: |
-    Generate email subject line from today's top stories.
-    
-    TOP STORIES:
-    {top_stories_json}
-    
-    REQUIREMENTS:
-    - Length: 40-60 characters ideal, 70 max
-    - Must be a COMPLETE thought (no truncation mid-sentence)
-    - Focus on the most newsworthy or impactful story
-    - Be specific and intriguing, not generic
-    - No source attributions (remove "- Reuters", "| CNN" etc)
-    
-    GOOD examples:
-    - "OpenAI Unveils GPT-5 with Reasoning Capabilities"
-    - "Fed Signals Rate Cuts as Inflation Cools"
-    - "Apple's Quantum Chip Disrupts Computing"
-    - "Climate Breakthrough: Fusion Powers Texas Grid"
-    
-    BAD examples (truncated/incomplete):
-    - "London protest organized by far"
-    - "Scientists discover new method for"
-    - "Breaking: Major announcement from"
-    
-    Generate a complete, compelling subject line that makes readers want to open the email.
-    - "Good morning! The paradox emerges: as systems grow more complex, solutions become surprisingly simple."
-    - "Good morning! Three unrelated stories today share one truth: infrastructure determines possibility."
+    Generate a one-sentence email subject line summary of today's forecast.
+
+    TODAY'S NEWSLETTER CONTENT:
+    {newsletter_summary}
+
+    Generate a single sentence that summarizes what the entire forecast is for today.
+    The sentence should be clear, informative, and capture the essence of all the sections.
+
+    Return ONLY the subject line, nothing else.
+
+    Examples of good EMAIL SUBJECT LINES (50-70 chars):
+    - "Good morning! Fed cuts rates as tech faces scrutiny"
+    - "Good morning! AI advances amid market volatility"
+    - "Good morning! Climate tech surges, tensions rise"
+    - "Good morning! Infrastructure drives today's shifts"
+    - "Good morning! Complex problems, simple solutions"
     
     Requirements:
     - Start with "Good morning!"
-    - 180-220 characters TOTAL
+    - 50-70 characters TOTAL (this is an EMAIL SUBJECT LINE - keep it concise!)
     - NO EMOJIS, NO special characters, NO Unicode
     - Be SPECIFIC to today's actual content
     - Create fresh, varied greetings - avoid repetitive patterns

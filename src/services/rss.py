@@ -37,7 +37,7 @@ class RSSItem:
             source=self.source_feed,
             section=section,
             headline=self.title,
-            content=self.content or self.description,
+            summary_text=self.content or self.description,
             url=self.link,
             published_date=self.published_date,
             metadata={
@@ -250,8 +250,52 @@ class RSSService:
             for h3 in soup.find_all(["h3", "h4"]):
                 text = h3.get_text(" ", strip=True)
                 if any(keyword.lower() in text.lower() for keyword in label_keywords):
-                    # Reference after ':'
-                    reference = text.split(":", 1)[1].strip() if ":" in text else text
+                    # Debug logging to understand current HTML structure
+                    self.logger.debug(f"USCCB header found: '{text}' for keywords {label_keywords}")
+
+                    # Improved reference extraction - handle both colon and no-colon formats
+                    reference = ""
+
+                    # First try: Extract after colon if present
+                    if ":" in text:
+                        reference = text.split(":", 1)[1].strip()
+                        self.logger.debug(f"Reference after colon split: '{reference}'")
+                    else:
+                        # No colon - extract using patterns
+                        self.logger.debug(f"No colon found in text: '{text}'")
+
+                    # Universal pattern matching for both colon and no-colon cases
+                    # Pattern 1: Extract full biblical citation after reading type
+                    # Matches: "Reading 1 1 Timothy 6:2c-12" or "Gospel Luke 8:1-3"
+                    full_citation_pattern = r'(?:Reading\s+\d+|Reading\s+[IVX]+|First\s+Reading|Second\s+Reading|Gospel|Responsorial\s+Psalm)\s+(.+)$'
+                    citation_match = re.search(full_citation_pattern, text, re.IGNORECASE)
+                    if citation_match:
+                        extracted = citation_match.group(1).strip()
+                        # Use this if it's longer/better than what we got from colon split
+                        if len(extracted) > len(reference) or re.match(r'^[\d\-\.,;:\s]+$', reference):
+                            reference = extracted
+                            self.logger.debug(f"Full citation pattern match: '{reference}'")
+
+                    # Pattern 2: If we still have incomplete reference, try to reconstruct
+                    if re.match(r'^[\d\-\.,;:\s]+$', reference):
+                        # Reference is just numbers/punctuation, look for book name in original text
+                        book_pattern = r'((?:\d+\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+([\d\-\.,;:\s]+)$'
+                        match = re.search(book_pattern, text)
+                        if match:
+                            book_part = match.group(1).strip()
+                            verse_part = match.group(2).strip()
+                            # Check if the book part is not a keyword
+                            if not any(keyword.lower() in book_part.lower() for keyword in label_keywords):
+                                reference = f"{book_part} {verse_part}".strip()
+                                self.logger.debug(f"Reconstructed reference from book pattern: '{reference}'")
+
+                    # Fallback: use the original text if nothing else worked
+                    if not reference:
+                        reference = text
+                        self.logger.debug(f"Using original text as fallback: '{reference}'")
+
+                    # Validate and clean the reference
+                    reference = self._validate_and_clean_reference(reference, label_keywords)
                     # Gather following paragraphs until next header
                     parts: List[str] = []
                     for sib in h3.find_all_next():
@@ -433,6 +477,57 @@ class RSSService:
         soup = BeautifulSoup(content or "", "html.parser")
         h2 = soup.find("h2")
         return h2.get_text(strip=True) if h2 else "Daily Readings"
+
+    def _validate_and_clean_reference(self, reference: str, label_keywords: List[str]) -> str:
+        """Validate and clean a scripture reference, providing fallbacks if needed."""
+        if not reference or not reference.strip():
+            self.logger.warning(f"Empty reference for keywords {label_keywords}")
+            return self._get_fallback_reference(label_keywords)
+
+        # Clean the reference
+        cleaned = reference.strip()
+
+        # Remove any remaining label keywords from the reference
+        for keyword in label_keywords:
+            if keyword.lower() in cleaned.lower():
+                # Remove the keyword and common separators
+                pattern = rf'\b{re.escape(keyword)}\b[:\s]*'
+                cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE).strip()
+
+        # Check if reference looks valid (contains letters, not just numbers/punctuation)
+        if re.match(r'^[\d\-\.,;:\s]+$', cleaned):
+            self.logger.warning(f"Reference appears incomplete (numbers only): '{cleaned}' for keywords {label_keywords}")
+            # Still return it but add a warning - the expansion function might help
+            return cleaned or self._get_fallback_reference(label_keywords)
+
+        # Check for minimum length
+        if len(cleaned) < 2:
+            self.logger.warning(f"Reference too short: '{cleaned}' for keywords {label_keywords}")
+            return self._get_fallback_reference(label_keywords)
+
+        self.logger.debug(f"Validated reference: '{cleaned}' for keywords {label_keywords}")
+        return cleaned
+
+    def _get_fallback_reference(self, label_keywords: List[str]) -> str:
+        """Provide fallback reference names when parsing fails."""
+        fallback_map = {
+            "Reading 1": "Daily Reading",
+            "Reading I": "Daily Reading",
+            "First Reading": "Daily Reading",
+            "Reading 2": "Second Reading",
+            "Reading II": "Second Reading",
+            "Second Reading": "Second Reading",
+            "Gospel": "Daily Gospel",
+            "Responsorial Psalm": "Daily Psalm"
+        }
+
+        for keyword in label_keywords:
+            if keyword in fallback_map:
+                self.logger.info(f"Using fallback reference '{fallback_map[keyword]}' for failed keyword '{keyword}'")
+                return fallback_map[keyword]
+
+        # Ultimate fallback
+        return "Daily Reading"
 
 
 class RSSServiceError(Exception):

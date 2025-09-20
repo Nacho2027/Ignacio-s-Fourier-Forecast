@@ -59,8 +59,8 @@ class SourceRankingService:
                 'blacklist': {'score': 0, 'sources': []},
                 'config': {
                     'min_quality_score': 3,
-                    'preferred_score_threshold': 6,
-                    'max_items_per_source': 2,
+                    'preferred_score_threshold': 5,  # Reduced from 6 to be less restrictive
+                    'max_items_per_source': 4,  # Increased from 2 to allow more from good sources
                     'boost_recent_hours': 6,
                     'recency_weight': 1.2
                 }

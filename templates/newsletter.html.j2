@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- Prevent dark mode inversion -->
+    <meta name="color-scheme" content="only light">
+    <meta name="supported-color-schemes" content="light">
     <title>{{ subject }}</title>
     <!--[if mso]>
     <noscript>
@@ -19,6 +22,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
     
     <style>
+        /* Enforce light mode only - prevent dark mode inversion */
+        :root {
+            color-scheme: only light;
+            supported-color-schemes: light;
+        }
+
         /* Reset and Base Styles */
         * {
             margin: 0;
@@ -29,7 +38,7 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.75;
-            color: #222222;
+            color: #1A1A1A;
             background-color: #FFFFFF;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
@@ -49,23 +58,16 @@
             padding: 40px 20px 32px;
             text-align: center;
             border-bottom: 1px solid #E0E0E0;
+            background-color: #FFFFFF;
         }
         
-        .logo-wrapper {
-            margin-bottom: 20px;
-        }
-        
-        .logo-image {
-            width: 80px;
-            height: 80px;
-            display: inline-block;
-        }
+        /* Logo removed - doesn't fit properly */
         
         .newsletter-title {
             font-family: 'Merriweather', Georgia, 'Times New Roman', serif;
             font-size: 28px;
             font-weight: 400;
-            color: #222222;
+            color: #1A1A1A;
             letter-spacing: -0.5px;
             margin: 16px 0 8px;
         }
@@ -82,13 +84,14 @@
         /* Content Wrapper */
         .content {
             padding: 32px 20px;
+            background-color: #FFFFFF;
         }
         
         /* Greeting - Clean Typography */
         .greeting {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 15px;
-            color: #222222;
+            color: #1A1A1A;
             line-height: 1.75;
             margin-bottom: 32px;
             padding-bottom: 32px;
@@ -120,7 +123,7 @@
             font-size: 18px;
             font-style: italic;
             font-weight: 300;
-            color: #222222;
+            color: #1A1A1A;
             line-height: 1.6;
         }
         
@@ -133,7 +136,7 @@
             font-family: 'Merriweather', Georgia, serif;
             font-size: 24px;
             font-weight: 400;
-            color: #222222;
+            color: #1A1A1A;
             margin-bottom: 8px;
             padding-bottom: 16px;
             border-bottom: 2px solid #9d1d20; /* Burgundy accent */
@@ -145,7 +148,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 14px;
             font-style: italic;
-            color: #7a8b7f; /* Sage green */
+            color: #333333; /* Dark gray for better readability */
             line-height: 1.75;
             margin-bottom: 24px;
             padding: 16px 0;
@@ -170,13 +173,13 @@
             font-family: 'Merriweather', Georgia, serif;
             font-size: 18px;
             font-weight: 700;
-            color: #222222;
+            color: #1A1A1A;
             margin-bottom: 12px;
             line-height: 1.4;
         }
         
         .item-headline a {
-            color: #222222;
+            color: #1A1A1A;
             text-decoration: none;
         }
         
@@ -196,9 +199,17 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 13px;
             color: #999999;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            /* Email-compatible layout without flexbox */
+        }
+
+        .item-meta span {
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 12px;
+        }
+
+        .item-meta span:last-child {
+            margin-right: 0;
         }
         
         .item-source {
@@ -240,7 +251,7 @@
             font-size: 17px;
             font-style: italic;
             font-weight: 300;
-            color: #222222;
+            color: #1A1A1A;
             line-height: 1.6;
             margin-bottom: 16px;
             max-width: 500px;
@@ -260,6 +271,7 @@
             border-top: 2px solid #9d1d20; /* Burgundy accent */
             padding: 32px 20px;
             text-align: center;
+            background-color: #FFFFFF;
         }
         
         .footer-stats {
@@ -280,7 +292,7 @@
         
         /* Links */
         a {
-            color: #222222;
+            color: #1A1A1A;
             text-decoration: underline;
             text-decoration-color: #CCCCCC;
             text-underline-offset: 2px;
@@ -299,10 +311,7 @@
                 padding: 48px 40px 40px;
             }
             
-            .logo-image {
-                width: 100px;
-                height: 100px;
-            }
+            /* Logo removed */
             
             .newsletter-title {
                 font-size: 36px;
@@ -340,9 +349,9 @@
                 font-size: 14px;
             }
             
-            .item-meta {
-                flex-wrap: wrap;
-                gap: 8px;
+            .item-meta span {
+                margin-right: 8px;
+                margin-bottom: 4px;
             }
             
             /* Better touch targets */
@@ -360,81 +369,26 @@
                 padding: 20px 0;
             }
         }
-        
-        /* Dark Mode Support */
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #1A1A1A !important;
-                color: #E0E0E0 !important;
-            }
-            
-            .email-container {
-                background-color: #1A1A1A !important;
-            }
-            
-            .newsletter-title,
-            .item-headline,
-            .golden-thread-text,
-            .surprise-content {
-                color: #E0E0E0 !important;
-            }
-            
-            .item-content {
-                color: #B0B0B0 !important;
-            }
-            
-            .date,
-            .item-meta,
-            .footer-stats {
-                color: #808080 !important;
-            }
-            
-            .header,
-            .golden-thread {
-                background-color: #2A2A2A !important;
-                border-color: #8B3A3A !important; /* Darker burgundy for dark mode */
-            }
-            
-            .section-title,
-            .item,
-            .footer {
-                border-color: #8B3A3A !important;
-            }
-            
-            .surprise {
-                background-color: #2A2A2A !important;
-                border-color: #8B5A47 !important; /* Darker terracotta for dark mode */
-            }
-            
-            a {
-                color: #E0E0E0 !important;
-                text-decoration-color: #666666 !important;
-            }
-        }
-        
-        /* Email Client Specific Fixes */
-        /* Outlook */
-        <!--[if mso]>
-        <style type="text/css">
-            .email-container {
-                width: 680px !important;
-            }
-            table {
-                border-collapse: collapse;
-            }
-        </style>
-        <![endif]-->
+
+        /* Email Client Specific Fixes handled via conditional comments below */
     </style>
+
+    <!--[if mso]>
+    <style type="text/css">
+        .email-container {
+            width: 680px !important;
+        }
+        table {
+            border-collapse: collapse;
+        }
+    </style>
+    <![endif]-->
 </head>
 <body>
     <div class="email-container">
         <!-- Header -->
         <div class="header">
-            <div class="logo-wrapper">
-                {% if logo_url %}
-                <img src="{{ logo_url }}" alt="Fourier Forecast Logo" class="logo-image" />
-                {% endif %}
-            </div>
+            <!-- Logo removed - doesn't fit properly -->
             <h1 class="newsletter-title">Ignacio's Fourier Forecast</h1>
             <div class="date">{{ date }}</div>
         </div>
@@ -460,17 +414,17 @@
             
             <!-- Sections -->
             {% for section_key, section_data in sections.items() %}
-            {% if section_data.items %}
+            {% if section_data['items'] %}
             <div class="section">
                 <h2 class="section-title">{{ section_key.replace('_', ' ').title() }}</h2>
                 
-                {% if section_data.intro_text %}
+                {% if section_data['intro_text'] %}
                 <div class="section-preface">
-                    {{ section_data.intro_text }}
+                    {{ section_data['intro_text'] }}
                 </div>
                 {% endif %}
                 
-                {% for item in section_data.items %}
+                {% for item in section_data['items'] %}
                 <div class="item">
                     <h3 class="item-headline">
                         {% if item.source_url %}

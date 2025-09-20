@@ -25,7 +25,7 @@ class ContentItem:
     source: str
     section: str
     headline: str
-    content: str
+    summary_text: str
     url: str
     published_date: datetime
     metadata: dict
@@ -305,7 +305,7 @@ class CacheService:
         """
         normalized_url = self.normalize_url(item.url)
         title_hash = self.generate_hash(self.normalize_text(item.headline))
-        content_hash = self.generate_hash(item.content)
+        content_hash = self.generate_hash(item.summary_text)
 
         now_et = datetime.now(EASTERN_TZ).isoformat()
         pub_dt = item.published_date
@@ -429,7 +429,7 @@ class CacheService:
                 source=row["source"],
                 section=row["section"],
                 headline=row["headline"],
-                content="",
+                summary_text="",
                 url=row["url"],
                 published_date=isoparse(row["first_seen_date"]).astimezone(EASTERN_TZ) if row["first_seen_date"] else datetime.now(EASTERN_TZ),
                 metadata={},
@@ -640,7 +640,7 @@ class CacheService:
                             source=row["source"],
                             section=row["section"],
                             headline=row["headline"],
-                            content="",  # Don't need full content for reconsideration
+                            summary_text="",  # Don't need full content for reconsideration
                             url=row["url"],
                             published_date=datetime.fromisoformat(row["first_seen_date"]),
                             metadata={"importance_score": row["importance_score"]},
@@ -687,7 +687,7 @@ class CacheService:
                     source=row["source"],
                     section=row["section"],
                     headline=row["headline"],
-                    content="",  # Don't need full content
+                    summary_text="",  # Don't need full content
                     url=row["url"],
                     published_date=datetime.fromisoformat(row["first_seen_date"]),
                     metadata={

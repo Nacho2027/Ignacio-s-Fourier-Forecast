@@ -1,0 +1,307 @@
+{
+  "breaking_news": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "apnews.com",
+        "reuters.com",
+        "npr.org"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "cnn.com",
+        "theguardian.com",
+        "washingtonpost.com",
+        "nytimes.com",
+        "wsj.com"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "bbc.com",
+        "politico.com",
+        "thehill.com",
+        "usatoday.com",
+        "nbcnews.com",
+        "cbsnews.com",
+        "abcnews.go.com"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "news.google.com",
+        "yahoo.com/news",
+        "msn.com/news"
+      ]
+    }
+  },
+  "business": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "wsj.com",
+        "ft.com",
+        "bloomberg.com",
+        "reuters.com/business",
+        "economist.com",
+        "axios.com"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "cnbc.com",
+        "forbes.com",
+        "fortune.com",
+        "axios.com/economy",
+        "businessinsider.com",
+        "marketwatch.com"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "barrons.com",
+        "seekingalpha.com",
+        "investing.com",
+        "fool.com",
+        "benzinga.com",
+        "thestreet.com",
+        "morningstar.com"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "finance.yahoo.com",
+        "news.google.com/business",
+        "zerohedge.com",
+        "kitco.com"
+      ]
+    }
+  },
+  "tech_science": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "technologyreview.com",
+        "arstechnica.com",
+        "theverge.com",
+        "wired.com",
+        "spectrum.ieee.org",
+        "nature.com",
+        "science.org",
+        "quantamagazine.org"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "techcrunch.com",
+        "engadget.com",
+        "anandtech.com",
+        "tomshardware.com",
+        "venturebeat.com",
+        "zdnet.com",
+        "tldr.tech"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "gizmodo.com",
+        "cnet.com",
+        "pcmag.com",
+        "digitaltrends.com",
+        "thenextweb.com",
+        "mashable.com",
+        "9to5mac.com",
+        "9to5google.com"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "techmeme.com",
+        "slashdot.org",
+        "hackernews.com",
+        "reddit.com/r/technology"
+      ]
+    }
+  },
+  "politics": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "apnews.com/politics",
+        "reuters.com/politics",
+        "npr.org/politics",
+        "pbs.org",
+        "propublica.org"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "politico.com",
+        "thehill.com",
+        "axios.com/politics",
+        "rollcall.com",
+        "nationaljournal.com",
+        "govexec.com"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "cnn.com/politics",
+        "foxnews.com/politics",
+        "nbcnews.com/politics",
+        "cbsnews.com/politics",
+        "abcnews.go.com/politics",
+        "washingtonpost.com/politics",
+        "nytimes.com/politics"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "realclearpolitics.com",
+        "fivethirtyeight.com",
+        "cookpolitical.com",
+        "ballotpedia.org"
+      ]
+    }
+  },
+  "startup": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "ycombinator.com",
+        "firstround.com",
+        "a16z.com",
+        "sequoiacap.com",
+        "benchmark.com"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "techcrunch.com/startups",
+        "venturebeat.com",
+        "sifted.eu",
+        "theinformation.com",
+        "stratechery.com",
+        "producthunt.com"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "crunchbase.com/news",
+        "pitchbook.com",
+        "fortune.com/term-sheet",
+        "axios.com/pro-rata",
+        "strictlyvc.com",
+        "mattermark.com"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "angel.co",
+        "betalist.com",
+        "killerstartups.com",
+        "startupgrind.com"
+      ]
+    }
+  },
+  "intellectual": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "theatlantic.com",
+        "newyorker.com",
+        "aeon.co",
+        "nautilus.us",
+        "harpers.org",
+        "parisreview.org"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "longreads.com",
+        "lithub.com",
+        "thebaffler.com",
+        "nplusonemag.com",
+        "lrb.co.uk",
+        "nybooks.com",
+        "prospectmagazine.co.uk"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "slate.com",
+        "salon.com",
+        "vox.com",
+        "theconversation.com",
+        "psyche.co",
+        "worksinprogress.co",
+        "jstor.org/daily"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "quora.com",
+        "brainpickings.org"
+      ]
+    }
+  },
+  "local": {
+    "tier_1_premium": {
+      "score": 10,
+      "sources": [
+        "miamiherald.com",
+        "sun-sentinel.com",
+        "news.cornell.edu",
+        "cornellsun.com"
+      ]
+    },
+    "tier_2_quality": {
+      "score": 8,
+      "sources": [
+        "miami.com",
+        "miaminewtimes.com",
+        "wsvn.com",
+        "local10.com",
+        "cornell.edu",
+        "ithacajournal.com"
+      ]
+    },
+    "tier_3_broad": {
+      "score": 6,
+      "sources": [
+        "nbcmiami.com",
+        "cbsmiami.com",
+        "wplg.com",
+        "floridatoday.com",
+        "orlandosentinel.com"
+      ]
+    },
+    "tier_4_fallback": {
+      "score": 4,
+      "sources": [
+        "patch.com/florida/miami",
+        "miami.curbed.com",
+        "timeout.com/miami"
+      ]
+    }
+  }
+}

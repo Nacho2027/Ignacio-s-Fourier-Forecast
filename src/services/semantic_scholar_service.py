@@ -81,9 +81,9 @@ class SemanticScholarService:
         self.session: Optional[aiohttp.ClientSession] = None
         self.timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
         
-        # Retry configuration
-        self.max_retries = 5
-        self.base_delay = 2.0  # Base delay for exponential backoff
+        # Retry configuration - more conservative without API key
+        self.max_retries = 3 if not self.api_key else 5  # Fewer retries without API key
+        self.base_delay = 3.0 if not self.api_key else 2.0  # Longer delays without API key
         
         # Fields to retrieve for optimal performance
         self.paper_fields = [
@@ -209,16 +209,19 @@ class SemanticScholarService:
                 tasks.append(task)
         
         # Execute searches with limited concurrency to respect rate limits
-        # Process 2 queries at a time to avoid overwhelming the API
+        # More conservative processing without API key
+        batch_size = 1 if not self.api_key else 2  # Single queries without API key
+        delay_between_batches = 2.0 if not self.api_key else 1.0  # Longer delays without API key
+
         results_from_tasks = []
-        for i in range(0, len(tasks), 2):
-            batch = tasks[i:i+2]
+        for i in range(0, len(tasks), batch_size):
+            batch = tasks[i:i+batch_size]
             batch_results = await asyncio.gather(*batch, return_exceptions=True)
             results_from_tasks.extend(batch_results)
-            
-            # Small delay between batches to respect rate limits
-            if i + 2 < len(tasks):
-                await asyncio.sleep(1.0)  # 1 second between batches
+
+            # Delay between batches to respect rate limits
+            if i + batch_size < len(tasks):
+                await asyncio.sleep(delay_between_batches)
         
         # Process all gathered results
         for query_results in results_from_tasks:
@@ -283,7 +286,8 @@ class SemanticScholarService:
             try:
                 # Add initial delay to avoid hitting rate limits
                 if attempt == 0:
-                    await asyncio.sleep(0.5)  # Small initial delay
+                    initial_delay = 1.0 if not self.api_key else 0.5  # Longer initial delay without API key
+                    await asyncio.sleep(initial_delay)
                 
                 # Build query parameters - use broad query for velocity mode
                 if query == "" or not query:

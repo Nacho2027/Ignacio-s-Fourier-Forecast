@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from anthropic import AsyncAnthropic
+from google import genai
+from google.genai import types
 
 
 @dataclass
@@ -51,17 +52,17 @@ class AIServiceError(Exception):
 
 class AIService:
     """
-    Central AI service for Claude interactions using Anthropic Messages API.
-    References: Anthropic Python SDK documentation.
+    Central AI service for Gemini interactions using Google GenAI API.
+    References: Google GenAI Python SDK documentation.
     """
 
     def __init__(self, api_key: Optional[str] = None, prompts_path: Optional[str] = None):
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY or pass api_key parameter.")
+            raise ValueError("Gemini API key required. Set GEMINI_API_KEY or pass api_key parameter.")
 
-        # Initialize Anthropic client
-        self.client = AsyncAnthropic(api_key=self.api_key)
+        # Initialize Gemini client
+        self.client = genai.Client(api_key=self.api_key)
         
         # Prompts
         self.prompts_path = prompts_path or "config/prompts_v2.yaml"
@@ -69,9 +70,9 @@ class AIService:
 
         # Model and temperatures from config when present
         params = self.prompts.get("parameters", {}) if isinstance(self.prompts, dict) else {}
-        model_cfg = params.get("claude", {}) if isinstance(params, dict) else {}
-        # Use Claude 4 Sonnet as default model
-        self.model = os.getenv("ANTHROPIC_MODEL") or model_cfg.get("model", "claude-sonnet-4-20250514")
+        model_cfg = params.get("gemini", {}) if isinstance(params, dict) else {}
+        # Use Gemini 2.5 Pro as default model
+        self.model = os.getenv("GEMINI_MODEL") or model_cfg.get("model", "gemini-2.5-pro")
 
         temps_cfg = params.get("temperatures", {}) if isinstance(params, dict) else {}
         self.temperatures: Dict[str, float] = {
@@ -83,7 +84,7 @@ class AIService:
         }
 
         self.max_retries = 5  # Increased for better reliability
-        self.max_tokens = 4096  # Default max tokens for Claude
+        self.max_tokens = 8192  # Higher default for Gemini 2.5 Pro thinking mode
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
@@ -102,17 +103,20 @@ class AIService:
     async def test_connection(self) -> bool:
         """Ping the API to validate connectivity and key."""
         try:
-            message = await self.client.messages.create(
-                model="claude-3-haiku-20240307",  # Use cheapest model for testing
-                max_tokens=16,
-                messages=[
-                    {"role": "user", "content": "ping"},
-                ],
+            self.logger.info("🔍 Testing AI service connection...")
+            response = await self.client.aio.models.generate_content(
+                model="gemini-2.5-pro",  # Use main model for testing
+                contents="ping",
+                config=types.GenerateContentConfig(max_output_tokens=1000)  # Higher limit for thinking mode
             )
-            self.logger.info(f"AI service test response: {message.content[0].text if message.content else 'No content'}")
-            return bool(message.content)
+            self.logger.info(f"✅ AI service test response: {response.text if response.text else 'No content'}")
+            return bool(response.text)
         except Exception as e:
-            self.logger.error(f"AI service test connection failed: {e}")
+            self.logger.error(f"❌ AI service test connection failed: {e}")
+            # Log more context for debugging
+            self.logger.error(f"   API key configured: {'Yes' if self.api_key else 'No'}")
+            self.logger.error(f"   API key length: {len(self.api_key) if self.api_key else 0}")
+            self.logger.error(f"   Model: {self.model}")
             return False
 
     async def rank_stories(self, stories: List[Dict], section: str, cache_service=None) -> List[RankingResult]:
@@ -136,10 +140,18 @@ class AIService:
         for story in stories:
             enhanced_story = dict(story)
             published_date = story.get("published") or story.get("published_date") or ""
-            
+
             # Calculate adaptive temporal factor
             temporal_factor = self._calculate_adaptive_temporal_factor(published_date, section)
             enhanced_story["temporal_relevance_factor"] = round(temporal_factor, 3)
+
+            # Include source authority score if available
+            if "source_authority" not in enhanced_story:
+                # Default to middle score if not provided
+                enhanced_story["source_authority"] = 5.0
+            else:
+                # Ensure it's a float
+                enhanced_story["source_authority"] = float(enhanced_story.get("source_authority", 5.0))
             
             # Add temporal guidance for AI
             if temporal_factor >= 0.8:
@@ -235,7 +247,16 @@ For INTELLECTUAL NOVELTY and CROSS-DOMAIN VALUE scoring, consider:
 
 {context["historical_guidance"]}
 
-Remember: Temporal impact measures lasting significance, not just recency. Historical context helps 
+SOURCE AUTHORITY SCORING:
+Each story includes a source_authority score (1-10) based on publication credibility.
+For SOURCE AUTHORITY dimension in your scoring:
+- Use the provided source_authority value directly
+- Scores 8-10: Premium sources (Reuters, AP, BBC, etc.)
+- Scores 6-7: Major newspapers and established media
+- Scores 4-5: Specialized or regional sources
+- Scores 1-3: Lesser-known or questionable sources
+
+Remember: Temporal impact measures lasting significance, not just recency. Historical context helps
 identify genuinely novel developments vs. variations on recurring themes."""
         
         if len(messages) > 0:
@@ -276,11 +297,11 @@ identify genuinely novel developments vs. variations on recurring themes."""
         forced_choice = {"type": "tool", "name": "return_ranking"}
         # Increase token limit for ranking many papers (30 papers * ~150 tokens each = ~4500 tokens)
         max_tokens = 8192 if len(enhanced_stories) > 15 else 4096
-        resp = await self._call_claude(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
             # single retry enforcing function again with same token limit
-            resp = await self._call_claude(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
             tool = self._extract_tool_call(resp)
 
         data: List[Dict[str, Any]] = []
@@ -308,7 +329,7 @@ identify genuinely novel developments vs. variations on recurring themes."""
         try:
             results = []
             for item in data:
-                # Fix common typos in field names that Claude might make
+                # Fix common typos in field names that Gemini might make
                 # Map of typo -> correct field name
                 field_corrections = {
                     'intellectual_novelance': 'intellectual_novelty',  # Common typo
@@ -395,10 +416,10 @@ identify genuinely novel developments vs. variations on recurring themes."""
             }
         ]
         forced_choice = {"type": "tool", "name": "return_editorial_decision"}
-        resp = await self._call_claude(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_claude(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
             tool = self._extract_tool_call(resp)
 
         if tool is not None:
@@ -421,7 +442,7 @@ identify genuinely novel developments vs. variations on recurring themes."""
     async def summarize_section(self, section: str, items: List[Dict]) -> str:
         context = {"section": section, "items": items, "items_json": json.dumps(items)}
         messages = self._format_prompt("gpt5_renaissance_summary", context)
-        resp = await self._call_claude(
+        resp = await self._call_gemini(
             messages=messages,
             max_tokens=3000,
         )
@@ -446,10 +467,10 @@ identify genuinely novel developments vs. variations on recurring themes."""
             }
         ]
         forced_choice = {"type": "tool", "name": "return_golden_thread"}
-        resp = await self._call_claude(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_claude(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
             tool = self._extract_tool_call(resp)
         if tool is not None:
             try:
@@ -498,10 +519,10 @@ identify genuinely novel developments vs. variations on recurring themes."""
             }
         ]
         forced_choice = {"type": "tool", "name": "return_delightful_surprise"}
-        resp = await self._call_claude(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_claude(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
             tool = self._extract_tool_call(resp)
         if tool is not None:
             try:
@@ -558,10 +579,10 @@ identify genuinely novel developments vs. variations on recurring themes."""
             }
         ]
         forced_choice = {"type": "tool", "name": "return_summary"}
-        resp = await self._call_claude(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_claude(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
             tool = self._extract_tool_call(resp)
         if tool is None:
             # Strict: do not fallback to free-form text; fail instead
@@ -712,15 +733,18 @@ Focus on proven wisdom from builders:
 Standard: Practical value for entrepreneurs.""",
             
             "miscellaneous": """
-MISCELLANEOUS CRITERIA:
-Focus on cross-disciplinary insights:
-- Ideas connecting multiple fields
-- Fresh perspectives on common topics
-- Prioritize CROSS-DOMAIN VALUE - bridges different knowledge areas
-- Prioritize INTELLECTUAL NOVELTY - unexpected connections
-- Educational value across disciplines
-- Reject: superficial trend pieces, listicles, purely entertainment content
-Standard: Expands understanding across domains.""",
+MISCELLANEOUS CRITERIA (RENAISSANCE BREADTH):
+Focus on humanities and liberal arts excellence with intellectual diversity:
+- Philosophy, history, literature, art, music, architecture insights
+- Cultural criticism and anthropological perspectives
+- Human nature, consciousness, health, and ethical explorations
+- ACTIVELY PRIORITIZE: Intellectual diversity across humanities disciplines
+- ACTIVELY PRIORITIZE: Philosophy, history, culture, health, psychology topics
+- ACTIVELY PRIORITIZE: Essays that expand understanding of human experience
+- BALANCE is key: Seek variety across philosophy, history, arts, culture, health
+- Include profound philosophical takes on modern topics (including tech/AI if deeply insightful)
+- Focus on substance and depth rather than excluding topics categorically
+Standard: Expands horizons through diverse intellectual pursuits and cultural understanding.""",
             
             "politics": """
 POLITICS CRITERIA:
@@ -759,7 +783,78 @@ Standard: Meaningful impact on community life.""",
         
         return section_prompts.get(section, "")
 
-    async def _call_claude(
+    def _convert_json_schema_to_gemini_schema(self, json_schema: Dict[str, Any]) -> types.Schema:
+        """
+        Convert a JSON Schema to Gemini's Schema format.
+
+        Handles type conversions and structure differences between JSON Schema and Gemini's expected format.
+        """
+        # Type mapping from JSON Schema to Gemini enums
+        type_mapping = {
+            'string': 'STRING',
+            'number': 'NUMBER',
+            'integer': 'INTEGER',
+            'boolean': 'BOOLEAN',
+            'array': 'ARRAY',
+            'object': 'OBJECT',
+            'null': 'NULL'
+        }
+
+        def convert_type(schema_type):
+            """Convert JSON Schema type to Gemini type enum."""
+            if isinstance(schema_type, list):
+                # Handle union types like ['string', 'null'] - use the primary (non-null) type
+                primary_types = [t for t in schema_type if t != 'null']
+                if primary_types:
+                    return type_mapping.get(primary_types[0], 'STRING')
+                else:
+                    return 'NULL'
+            else:
+                return type_mapping.get(schema_type, 'STRING')
+
+        def convert_schema_recursive(schema):
+            """Recursively convert schema structure."""
+            if not isinstance(schema, dict):
+                return schema
+
+            result = {}
+
+            # Convert type
+            if 'type' in schema:
+                result['type'] = convert_type(schema['type'])
+
+            # Copy description
+            if 'description' in schema:
+                result['description'] = schema['description']
+
+            # Handle properties for objects
+            if 'properties' in schema:
+                converted_properties = {}
+                for prop_name, prop_schema in schema['properties'].items():
+                    converted_properties[prop_name] = convert_schema_recursive(prop_schema)
+                result['properties'] = converted_properties
+
+            # Handle array items
+            if 'items' in schema:
+                result['items'] = convert_schema_recursive(schema['items'])
+
+            # Copy required fields
+            if 'required' in schema:
+                result['required'] = schema['required']
+
+            # Copy enum values
+            if 'enum' in schema:
+                result['enum'] = schema['enum']
+
+            return result
+
+        # Convert the schema
+        converted = convert_schema_recursive(json_schema)
+
+        # Create Gemini Schema object
+        return types.Schema(**converted)
+
+    async def _call_gemini(
         self,
         messages: List[Dict],
         max_tokens: int = 4096,
@@ -768,92 +863,130 @@ Standard: Meaningful impact on community life.""",
         tool_choice: Optional[Dict] = None,
     ) -> Dict[str, Any]:
         """
-        Call Anthropic Messages API for Claude.
-        Uses the Anthropic Python SDK for proper API interaction.
+        Call Google Gemini API.
+        Uses the Google GenAI Python SDK for proper API interaction.
         """
         try:
-            # Convert messages format - Anthropic doesn't use system messages in the messages array
-            system_message = None
-            user_messages = []
-            
+            # Convert messages format - Gemini uses system instructions and contents
+            system_instruction = None
+            contents = []
+
             for msg in messages:
                 if msg.get("role") == "system":
-                    system_message = msg["content"]
+                    system_instruction = msg["content"]
                 else:
-                    user_messages.append(msg)
-            
-            # Build the API call parameters
-            params = {
-                "model": self.model,
-                "max_tokens": max_tokens,
-                "messages": user_messages,
-            }
-            
-            # Add system message if present
-            if system_message:
-                params["system"] = system_message
-            
-            # Add tools if present (Anthropic uses similar tool format)
+                    # Gemini expects contents as strings or objects
+                    contents.append(msg["content"])
+
+            # Build the configuration
+            config = types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+                temperature=0.3  # Default temperature, can be made configurable
+                # Note: Gemini 2.5 Pro requires thinking mode - let it use default settings
+            )
+
+            # Add system instruction if present
+            if system_instruction:
+                config.system_instruction = system_instruction
+
+            # Convert tools to Gemini format
             if tools:
-                params["tools"] = tools
-            if tool_choice:
-                params["tool_choice"] = tool_choice
-                
-            # Call the Anthropic API
-            message = await self.client.messages.create(**params)
-            
+                function_declarations = []
+                for tool in tools:
+                    if tool.get("type") == "custom":
+                        # Convert custom tool to Gemini function declaration format using proper types
+                        function_declaration = types.FunctionDeclaration(
+                            name=tool["name"],
+                            description=tool["description"],
+                            parameters=self._convert_json_schema_to_gemini_schema(tool["input_schema"])
+                        )
+                        function_declarations.append(function_declaration)
+
+                if function_declarations:
+                    # Create Tool with function declarations
+                    gemini_tool = types.Tool(function_declarations=function_declarations)
+                    config.tools = [gemini_tool]
+
+                    # Handle tool choice (function calling mode)
+                    if tool_choice and tool_choice.get("type") == "tool":
+                        # Force function calling - use tool_config
+                        config.tool_config = types.ToolConfig(
+                            function_calling_config=types.FunctionCallingConfig(
+                                mode="ANY",
+                                allowed_function_names=[tool_choice.get("name")]
+                            )
+                        )
+
+            # Call the Gemini API (async)
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=config
+            )
+
             # Convert response to format expected by our code
-            # Anthropic returns a Message object, we need to convert it to dict format
-            response = {
-                "id": message.id,
-                "model": message.model,
+            usage_meta = getattr(response, 'usage_metadata', None)
+            result = {
+                "id": "gemini_response",  # Gemini doesn't provide ID
+                "model": self.model,
                 "usage": {
-                    "input_tokens": message.usage.input_tokens if message.usage else 0,
-                    "output_tokens": message.usage.output_tokens if message.usage else 0,
-                    "total_tokens": (message.usage.input_tokens + message.usage.output_tokens) if message.usage else 0,
+                    "input_tokens": getattr(usage_meta, 'prompt_token_count', 0) if usage_meta else 0,
+                    "output_tokens": getattr(usage_meta, 'candidates_token_count', 0) if usage_meta else 0,
+                    "total_tokens": getattr(usage_meta, 'total_token_count', 0) if usage_meta else 0,
                 },
-                "stop_reason": message.stop_reason,
+                "stop_reason": "stop",  # Default stop reason
             }
-            
-            # Handle content and tool calls
-            if message.content:
-                # Check for tool calls
-                tool_calls = []
-                text_content = ""
-                
-                for content_block in message.content:
-                    if hasattr(content_block, 'type'):
-                        if content_block.type == 'text' and hasattr(content_block, 'text'):
-                            text_content = content_block.text
-                        elif content_block.type == 'tool_use':
+
+            # Handle content and function calls
+            tool_calls = []
+            text_content = ""
+
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+
+                # Safely check for content and parts
+                if (hasattr(candidate, 'content') and
+                    candidate.content and
+                    hasattr(candidate.content, 'parts') and
+                    candidate.content.parts):
+
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_content = part.text
+                        elif hasattr(part, 'function_call') and part.function_call:
+                            # Convert Gemini function call to our format
                             tool_calls.append({
                                 "type": "custom",
                                 "function": {
-                                    "name": content_block.name if hasattr(content_block, 'name') else "",
-                                    "arguments": json.dumps(content_block.input) if hasattr(content_block, 'input') else "{}",
+                                    "name": part.function_call.name,
+                                    "arguments": json.dumps(dict(part.function_call.args)) if part.function_call.args else "{}",
                                 }
                             })
-                
-                # Add tool calls if present
-                if tool_calls:
-                    response["tool_calls"] = tool_calls
-                    
-                # Add text content if present
-                if text_content:
-                    response["output_text"] = text_content
-                    # Also add in choices format for compatibility
-                    response["choices"] = [{
-                        "message": {
-                            "content": text_content,
-                            "tool_calls": tool_calls if tool_calls else None
-                        }
-                    }]
-            
-            return response
-            
+
+            # Try response.text as fallback if no content from candidates
+            if not text_content and hasattr(response, 'text') and response.text:
+                text_content = response.text
+
+            # Add tool calls if present
+            if tool_calls:
+                result["tool_calls"] = tool_calls
+
+            # Add text content if present
+            if text_content:
+                result["output_text"] = text_content
+                # Also add in choices format for compatibility
+                result["choices"] = [{
+                    "message": {
+                        "content": text_content,
+                        "tool_calls": tool_calls if tool_calls else None
+                    }
+                }]
+
+            return result
+
         except Exception as e:
-            self.logger.error(f"Error calling Anthropic API: {e}")
-            raise AIServiceError(f"Failed to call Anthropic API: {e}")
+            self.logger.error(f"Error calling Gemini API: {e}")
+            raise AIServiceError(f"Failed to call Gemini API: {e}")
 
     def _format_prompt(self, prompt_key: str, context: Dict[str, Any]) -> List[Dict]:
         """Construct messages array from prompt templates and context (plain text content)."""
@@ -888,12 +1021,12 @@ Standard: Meaningful impact on community life.""",
         ]
 
     def _extract_text_content(self, resp: Dict[str, Any]) -> str:
-        """Extract assistant text from Anthropic response format."""
+        """Extract assistant text from Gemini response format."""
         if not isinstance(resp, dict):
             return ""
         
         # Log the full response structure for debugging
-        self.logger.debug(f"Full Claude response structure: {json.dumps(resp, indent=2)[:1000]}...")
+        self.logger.debug(f"Full Gemini response structure: {json.dumps(resp, indent=2)[:1000]}...")
         
         # Direct output_text field
         if "output_text" in resp and isinstance(resp["output_text"], str):
@@ -1047,44 +1180,41 @@ Standard: Meaningful impact on community life.""",
         except Exception:
             return None
 
-    async def generate_subject_line(self, top_stories: List[Dict[str, str]]) -> str:
+    async def generate_subject_line(self, newsletter_content: Dict[str, Any]) -> str:
         """
-        Generate a compelling email subject line from top news stories using AI.
-        
+        Generate a simple one-sentence summary of today's forecast as the email subject line.
+
         Args:
-            top_stories: List of top story dictionaries with 'headline', 'source', and optionally 'impact' keys
-            
+            newsletter_content: Complete newsletter content (all sections, headlines, summaries)
+
         Returns:
-            A complete, compelling subject line (40-70 characters)
+            A one-sentence summary of today's forecast
         """
-        self.logger.info(f"📧 Generating AI subject line from {len(top_stories)} top stories")
-        
-        # Clean stories - remove source attributions from headlines
-        import re
-        cleaned_stories = []
-        for story in top_stories[:5]:  # Use top 5 stories max
-            headline = story.get('headline', '')
-            # Remove source attributions
-            headline = re.sub(r'\s*[-|]\s*(Reuters|AP|CNN|BBC|WSJ|Bloomberg|NYT|FT|NBC|ABC|CBS|Fox)\s*$', '', headline, flags=re.IGNORECASE)
-            cleaned_stories.append({
-                'headline': headline,
-                'source': story.get('source', ''),
-                'impact': story.get('impact', '')
-            })
-        
+        self.logger.info(f"📧 Generating AI subject line from complete newsletter content")
+
+        # Prepare simplified content for the AI
+        simplified_content = {}
+        if newsletter_content:
+            for section_name, section_data in newsletter_content.items():
+                if isinstance(section_data, list) and section_data:
+                    # Extract just the headlines for each section
+                    headlines = [item.get('headline', '') for item in section_data[:3] if item.get('headline')]
+                    if headlines:
+                        simplified_content[section_name] = headlines
+
         context = {
-            "top_stories_json": json.dumps(cleaned_stories, ensure_ascii=False)
+            "newsletter_summary": json.dumps(simplified_content, ensure_ascii=False)
         }
-        
+
         try:
             messages = self._format_prompt("gpt5_subject_line", context)
-            
+
             # Use tool-calling for reliable extraction
             tools = [
                 {
                     "type": "custom",
                     "name": "return_subject",
-                    "description": "Return the email subject line",
+                    "description": "Return the email subject line summary",
                     "input_schema": {
                         "type": "object",
                         "properties": {
@@ -1095,48 +1225,31 @@ Standard: Meaningful impact on community life.""",
                 }
             ]
             forced_choice = {"type": "tool", "name": "return_subject"}
-            
-            resp = await self._call_claude(messages=messages, max_tokens=256, tools=tools, tool_choice=forced_choice)
-            
+
+            resp = await self._call_gemini(messages=messages, max_tokens=256, tools=tools, tool_choice=forced_choice)
+
             # Extract subject from tool call
             tool = self._extract_tool_call(resp)
-            subject = ""
             if tool:
                 try:
                     args = json.loads(tool["function"]["arguments"]) or {}
                     subject = args.get("subject", "").strip()
-                    
-                    # Validate subject - ensure it's complete and right length
-                    if subject and 30 <= len(subject) <= 70:
-                        # Check it's not truncated (doesn't end in incomplete words or mid-thought)
-                        if not subject.endswith(('...', ' for', ' by', ' of', ' in', ' at', ' on', ' to', ' from')):
-                            self.logger.info(f"✅ Generated AI subject line ({len(subject)} chars): {subject}")
-                            return subject
-                        else:
-                            self.logger.warning(f"⚠️ Subject appears truncated: {subject}")
-                    else:
-                        self.logger.warning(f"⚠️ Subject wrong length ({len(subject)} chars): {subject}")
-                        
+
+                    # No character limits - just ensure we got something
+                    if subject:
+                        self.logger.info(f"✅ Generated AI subject line: {subject}")
+                        return subject
+
                 except Exception as e:
                     self.logger.error(f"Failed to parse subject tool arguments: {e}")
-            
-            # Fallback to a default if AI fails
+
+            # Simple fallback if AI fails
             self.logger.warning("❌ AI subject generation failed, using fallback")
-            if top_stories and top_stories[0].get('headline'):
-                # Use cleaned first headline as fallback
-                fallback = cleaned_stories[0]['headline'][:60]
-                # Ensure it ends on a complete word
-                if len(fallback) == 60:
-                    last_space = fallback.rfind(' ')
-                    if last_space > 30:
-                        fallback = fallback[:last_space]
-                return fallback
-            
-            return "Today's Critical Developments"
-            
+            return "Today's Fourier Forecast - Your Daily News Summary"
+
         except Exception as e:
             self.logger.error(f"💥 Subject line generation failed: {e}")
-            return "Today's Essential Updates"
+            return "Today's Fourier Forecast - Your Daily News Summary"
 
     async def generate_morning_greeting(self, date: datetime, newsletter_content: Optional[Dict[str, Any]] = None, golden_thread: Optional[str] = None) -> str:
         """
@@ -1187,7 +1300,7 @@ Standard: Meaningful impact on community life.""",
             ]
             forced_choice = {"type": "tool", "name": "return_greeting"}
             
-            resp = await self._call_claude(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
             self.logger.debug(f"GPT-5 response received: {type(resp)}")
             
             # Extract greeting from tool call
@@ -1204,7 +1317,7 @@ Standard: Meaningful impact on community life.""",
             else:
                 # Retry once if tool extraction failed
                 self.logger.warning("No tool call found, retrying...")
-                resp = await self._call_claude(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
                 tool = self._extract_tool_call(resp)
                 if tool:
                     try:
@@ -1219,14 +1332,14 @@ Standard: Meaningful impact on community life.""",
             
             # Validate the greeting - ensure it starts appropriately and isn't empty
             if greeting and len(greeting) > 10 and any(word in greeting.lower() for word in ['good morning', 'hello', 'rise', 'greetings']):
-                # Ensure it's under 300 characters (with safety margin)
+                # Ensure it's under 200 characters (with safety margin)
                 greeting_len = len(greeting)
-                if greeting_len <= 300:
+                if greeting_len <= 200:
                     self.logger.info(f"✅ Generated contextual greeting ({greeting_len} chars): {greeting}")
                     return greeting
                 else:
                     # Truncate gracefully at sentence boundary
-                    max_len = 300
+                    max_len = 200
                     # Look for sentence endings, but not the first "Good morning!" 
                     # Find all periods and exclamation marks after position 20
                     sentence_ends = []
@@ -1344,8 +1457,8 @@ Standard: Meaningful impact on community life.""",
                 }
             ]
             
-            # Call Claude for the preface
-            response = await self._call_claude(
+            # Call Gemini for the preface
+            response = await self._call_gemini(
                 messages=messages,
                 max_tokens=2000
             )
@@ -1395,7 +1508,7 @@ Standard: Meaningful impact on community life.""",
 
         start = asyncio.get_event_loop().time()
         try:
-            resp = await self._call_claude(messages=messages, max_tokens=max_tokens)
+            resp = await self._call_gemini(messages=messages, max_tokens=max_tokens)
             end = asyncio.get_event_loop().time()
             tokens_used = 0
             try:

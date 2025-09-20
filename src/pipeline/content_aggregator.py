@@ -6,6 +6,7 @@ from datetime import datetime
 
 # Services live at src/services/*. Use actual module names in this repo
 from src.services.llmlayer import LLMLayerService, LLMLayerResult, Citation
+from src.services.adaptive_search_manager import AdaptiveSearchManager
 from src.services.arxiv import ArxivService, ArxivPaper
 from src.services.rss import RSSService, DailyReading
 from src.services.ai_service import AIService, RankingResult
@@ -33,7 +34,7 @@ class RankedItem:
     id: str
     url: str
     headline: str
-    content: str
+    summary_text: str
     source: str
     section: str
     published_date: datetime
@@ -131,13 +132,20 @@ class ContentAggregator:
         self.ai = ai
         self.cache_service = cache_service
         self.embeddings = embeddings
-        
+
+        # Initialize adaptive search manager for intelligent fallback
+        self.adaptive_search = AdaptiveSearchManager(llmlayer)
+
         # Initialize source ranking service if not provided
         self.source_ranker = source_ranker or SourceRankingService()
+        # Also set as source_ranking_service for backward compatibility
+        self.source_ranking_service = self.source_ranker
+        # Initialize source_ranking_config from the source_ranker
+        self.source_ranking_config = self.source_ranker.authority_config if self.source_ranker else {}
         self.semantic_scholar = semantic_scholar
 
         self.parallel_limit = 10
-        self.fetch_timeout = 180  # Increased from 60s to 180s (3 minutes) to allow LLMLayer to complete
+        self.fetch_timeout = 900  # 15 minutes to accommodate rate-limited cascading LLMLayer calls (50 req/min)
         # Keep threshold in 30-point scale for initialization expectations/tests
         self.min_score_threshold = 12  # Lowered from 15 to include more research papers (4.0 threshold)
         # HARD LIMITS: Exact article counts per section (no ranges!)
@@ -148,7 +156,7 @@ class ContentAggregator:
             Section.RESEARCH_PAPERS: (5, 5), # Exactly 5
             Section.STARTUP: (2, 2),        # Exactly 2
             Section.SCRIPTURE: (6, 10),     # Keep flexible for Scripture
-            Section.POLITICS: (0, 2),       # 0-2 per VISION.txt
+            Section.POLITICS: (2, 2),       # Exactly 2 per vision
             Section.LOCAL: (2, 2),          # Exactly 2 (1 Miami + 1 Cornell when possible)
             Section.MISCELLANEOUS: (5, 5),  # Exactly 5
             Section.EXTRA: (0, 2),          # 0-2 flexible
@@ -220,7 +228,7 @@ class ContentAggregator:
                             sections[fr.section].append({
                                 "headline": f"{fr.section.replace('_', ' ').title()} - Content Unavailable",
                                 "url": "#",
-                                "content": f"We were unable to fetch {fr.section.replace('_', ' ')} at this time. Error: {fr.error}",
+                                "summary_text": f"We were unable to fetch {fr.section.replace('_', ' ')} at this time. Error: {fr.error}",
                                 "source": "System Notice",
                                 "published": datetime.now().isoformat(),
                                 "is_placeholder": True
@@ -239,7 +247,7 @@ class ContentAggregator:
                     sections[res.section].append({
                         "headline": f"{res.section.replace('_', ' ').title()} - Content Unavailable",
                         "url": "#",
-                        "content": f"We were unable to fetch {res.section.replace('_', ' ')} content at this time. Error: {res.error}",
+                        "summary_text": f"We were unable to fetch {res.section.replace('_', ' ')} content at this time. Error: {res.error}",
                         "source": "System Notice",
                         "published": datetime.now().isoformat(),
                         "is_placeholder": True
@@ -253,224 +261,200 @@ class ContentAggregator:
         return sections
 
     async def _fetch_llmlayer_sections(self) -> List[FetchResult]:
-        names = [
-            "breaking_news",
-            "business",
-            "tech_science",
-            "startup",
-            "politics",
-            "local",
-            "miscellaneous",
-            "catholic",
+        """Fetch all LLMLayer sections using rate-limited queue for optimal performance."""
+        section_fetchers = [
+            ("breaking_news", self._fetch_breaking_news),
+            ("business", self._fetch_business_news),
+            ("tech_science", self._fetch_tech_science),
+            ("startup", self._fetch_startup_insights),
+            ("politics", self._fetch_politics),
+            ("local", self._fetch_local_news),
+            ("miscellaneous", self._fetch_miscellaneous),
+            ("catholic", self._fetch_scripture),
         ]
-        tasks = [
-            asyncio.wait_for(self._fetch_breaking_news(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_business_news(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_tech_science(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_startup_insights(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_politics(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_local_news(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_miscellaneous(), timeout=self.fetch_timeout),
-            asyncio.wait_for(self._fetch_scripture(), timeout=self.fetch_timeout),
-        ]
+
+        section_map = {
+            "breaking_news": Section.BREAKING_NEWS,
+            "business": Section.BUSINESS,
+            "tech_science": Section.TECH_SCIENCE,
+            "startup": Section.STARTUP,
+            "politics": Section.POLITICS,
+            "local": Section.LOCAL,
+            "miscellaneous": Section.MISCELLANEOUS,
+            "catholic": Section.SCRIPTURE,
+        }
+
+        # Submit all tasks to run in parallel - the rate limiting is handled by the queue
+        tasks = []
+        for name, fetcher in section_fetchers:
+            task = asyncio.create_task(
+                self._run_fetcher_with_timeout(name, fetcher, section_map.get(name, Section.MISCELLANEOUS))
+            )
+            tasks.append(task)
+
+        self.logger.info(f"Submitting {len(tasks)} sections to rate-limited queue...")
+
+        # Wait for all sections to complete (rate limiting happens in the queue)
         results = await asyncio.gather(*tasks, return_exceptions=True)
+
         out: List[FetchResult] = []
-        for name, r in zip(names, results):
-            if isinstance(r, FetchResult):
-                out.append(r)
-            elif isinstance(r, Exception):
-                # Log the error but don't kill the entire pipeline
-                self.logger.error("LLMLayer subfetch '%s' failed: %s", name, r)
-                # Create an empty FetchResult for this section so other sections can continue
-                # Map section names to Section enum values
-                section_map = {
-                    "breaking_news": Section.BREAKING_NEWS,
-                    "business": Section.BUSINESS,
-                    "tech_science": Section.TECH_SCIENCE,
-                    "startup": Section.STARTUP,
-                    "politics": Section.POLITICS,
-                    "local": Section.LOCAL,
-                    "miscellaneous": Section.MISCELLANEOUS,
-                    "scripture": Section.SCRIPTURE,
-                }
-                section_enum = section_map.get(name, Section.MISCELLANEOUS)
-                out.append(FetchResult("llmlayer", section_enum, [], 0.0, error=str(r)))
+        for result in results:
+            if isinstance(result, Exception):
+                self.logger.error(f"Section fetch failed with exception: {result}")
+                # Add a placeholder failure result
+                out.append(FetchResult("llmlayer", Section.MISCELLANEOUS, [], 0.0, error=str(result)))
+            elif isinstance(result, FetchResult):
+                out.append(result)
+            else:
+                self.logger.error(f"Unexpected result type: {type(result)}")
+
         return out
+
+    async def _run_fetcher_with_timeout(self, name: str, fetcher, section_enum) -> FetchResult:
+        """Run a single fetcher with timeout and error handling."""
+        try:
+            self.logger.info(f"Starting {name} section...")
+            result = await asyncio.wait_for(fetcher(), timeout=self.fetch_timeout)
+            if isinstance(result, FetchResult):
+                self.logger.info(f"✓ {name} completed: {len(result.items)} items")
+                return result
+            else:
+                self.logger.error(f"✗ {name} returned invalid result type: {type(result)}")
+                return FetchResult("llmlayer", section_enum, [], 0.0, error="Invalid result type")
+
+        except Exception as e:
+            self.logger.error(f"✗ LLMLayer section '{name}' failed: {e}")
+            return FetchResult("llmlayer", section_enum, [], 0.0, error=str(e))
 
     async def _fetch_breaking_news(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # VISION.txt specifies AP News and Reuters ONLY for Breaking News
-            # Must be high-impact, global importance, no sensationalism
-            self.logger.info("Fetching breaking news from AP News and Reuters via LLMLayer")
+            self.logger.info("Fetching breaking news using adaptive search with intelligent fallback")
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
-            result = await self.llmlayer.search(
-                query=f"What are the most important breaking news stories from {today} ONLY from Associated Press (apnews.com) and Reuters (reuters.com) in ENGLISH? Exclude all Asian, Indian, Chinese, or non-English sources. Focus on major US and global events happening on {today}. NOT from other news sites.",
-                max_results=20,  # Fetch 20, then validate and rank to best 3-5
-                domains=["apnews.com", "reuters.com"],  # Now properly used via domain_filter
-                recency="day",
-                search_type="news"  # Use news search type for news content
+
+            # Use adaptive search manager for intelligent fallback
+            base_query = f"breaking news today {today} latest urgent stories headlines important developments"
+            articles, search_results = await self.adaptive_search.search_with_fallback(
+                section=Section.BREAKING_NEWS,
+                base_query=base_query,
+                target_count=3
             )
-            self.logger.info("Breaking news: Got %d citations from AP/Reuters", len(result.citations))
-            
-            # Log citation date processing for debugging
-            self.logger.info(f"Breaking News: Processing {len(result.citations)} citations for date conversion")
-            items_raw = []
-            for i, c in enumerate(result.citations):
-                published_iso = None
-                if c.published_date:
-                    published_iso = c.published_date.isoformat()
-                    self.logger.debug(f"Breaking News Citation {i+1}: Found published_date = {c.published_date} -> {published_iso}")
-                else:
-                    self.logger.warning(f"Breaking News Citation {i+1}: No published_date available for '{c.title[:50]}...' from {c.source_name}")
-                
-                item = {
-                    "headline": c.title,
-                    "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
-                    "source": c.source_name,
-                    "published": published_iso,
-                }
-                items_raw.append(item)
-            
-            # Validate sources BEFORE other filtering
-            items_validated = self._validate_sources(items_raw, ["apnews.com", "reuters.com"], "Breaking News")
-            # Use multi-stage pipeline instead of simple filtering
-            items = self._apply_multi_stage_pipeline(items_validated, Section.BREAKING_NEWS, max_age_days=1, min_items=3)
-            self.logger.info("Breaking news: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
-            
-            # If too few items after filtering, try again with stricter query
-            if len(items) < 3:
-                self.logger.warning(f"Breaking news: Only {len(items)} items after filtering, retrying with stricter query")
-                retry_result = await self.llmlayer.search(
-                    query=f"Latest breaking news {today} STRICTLY from apnews.com OR reuters.com ONLY. US and UK news in English only. No other sources.",
-                    max_results=15,
-                    domains=["apnews.com", "reuters.com"],
-                    recency="day",
-                    search_type="news"
-                )
-                
-                retry_items_raw = [
-                    {
-                        "headline": c.title,
-                        "url": c.url,
-                        "content": c.snippet,
-                        "source": c.source_name,
-                        "published": (c.published_date.isoformat() if c.published_date else None),
-                    }
-                    for c in retry_result.citations
-                ]
-                
-                # Deduplicate by URL
-                existing_urls = {item["url"] for item in items}
-                for retry_item in retry_items_raw:
-                    if retry_item["url"] not in existing_urls:
-                        items_raw.append(retry_item)
-                        existing_urls.add(retry_item["url"])
-                
-                # Re-filter combined items
-                items_validated = self._validate_sources(items_raw, ["apnews.com", "reuters.com"], "Breaking News")
-                items = self._filter_items(items_validated, max_age_days=1)
-                self.logger.info(f"Breaking news: After retry, {len(items)} final items from {len(items_raw)} total")
-            
+
+            # Log search performance
+            search_summary = self.adaptive_search.get_search_summary(search_results)
+            self.logger.info(f"Breaking news adaptive search: {search_summary['total_articles_found']} articles from {search_summary['strategies_used']} strategies")
+
+            # Apply filtering and ranking pipeline
+            items = self._apply_multi_stage_pipeline(articles, Section.BREAKING_NEWS, max_age_days=2, min_items=3)
+            self.logger.info(f"Breaking news: {len(items)} items after multi-stage pipeline from {len(articles)} raw articles")
+
             return FetchResult(
-                source="llmlayer",
+                source="adaptive_search",
                 section=Section.BREAKING_NEWS,
                 items=items,
                 fetch_time=asyncio.get_event_loop().time() - start,
             )
-        except Exception as e:  # noqa: BLE001
-            return await self._handle_fetch_failure("llmlayer", e)
+        except Exception as e:
+            # Breaking news is critical; return error result
+            self.logger.error(f"Breaking news adaptive search failed: {e}")
+            return await self._handle_fetch_failure("adaptive_search", e)
 
     async def _fetch_business_news(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # VISION.txt says WSJ and Axios Pro Rata (user has subscriptions)
-            # Focus on major market moves, big deals, economic shifts per VISION.txt
-            self.logger.info("Fetching business news from WSJ/Axios via LLMLayer")
+            self.logger.info("Fetching business news using adaptive search with intelligent fallback")
             from datetime import datetime
             today = datetime.now().strftime("%B %d, %Y")
-            result = await self.llmlayer.search(
-                query=(
-                    f"What are the important business and market developments from {today} today "
-                    f"SPECIFICALLY from Wall Street Journal (wsj.com) and Axios (axios.com)? "
-                    f"ONLY include articles that are DIRECTLY from wsj.com or axios.com domains. "
-                    f"Focus on major market moves, M&A deals over $100M, venture capital mega-deals, "
-                    f"IPOs, and Federal Reserve decisions happening on {today}. "
-                    f"DO NOT include articles from SeekingAlpha, CNBC, Bloomberg, BusinessToday, "
-                    f"MarketWatch, Forbes, or any other business publications."
-                ),
-                max_results=12,  # Increase to get more WSJ/Axios after filtering
-                domains=["wsj.com", "axios.com"],  # Now properly used via domain_filter
-                recency="day",
-                search_type="news"  # Use news search type for business news
+
+            # Use adaptive search manager for intelligent fallback
+            base_query = f"business market news {today} stocks economy earnings deals IPO Federal Reserve"
+            articles, search_results = await self.adaptive_search.search_with_fallback(
+                section=Section.BUSINESS,
+                base_query=base_query,
+                target_count=3
             )
-            self.logger.info("Business: Got %d citations from WSJ/Axios/Bloomberg", len(result.citations))
-            items_raw = [
-                {
-                    "headline": c.title,
-                    "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
-                    "source": c.source_name,
-                    "published": (c.published_date.isoformat() if c.published_date else None),
-                }
-                for c in result.citations
-            ]
-            # Validate sources BEFORE other filtering
-            items_validated = self._validate_sources(items_raw, ["wsj.com", "axios.com"], "Business")
-            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
-            items = self._apply_multi_stage_pipeline(items_validated, Section.BUSINESS, max_age_days=2, min_items=3)
-            self.logger.info("Business: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
-            return FetchResult("llmlayer", Section.BUSINESS, items, asyncio.get_event_loop().time() - start)
-        except Exception as e:  # noqa: BLE001
-            return await self._handle_fetch_failure("llmlayer", e)
+
+            # Log search performance
+            search_summary = self.adaptive_search.get_search_summary(search_results)
+            self.logger.info(f"Business adaptive search: {search_summary['total_articles_found']} articles from {search_summary['strategies_used']} strategies")
+
+            # Apply filtering and ranking pipeline
+            items = self._apply_multi_stage_pipeline(articles, Section.BUSINESS, max_age_days=3, min_items=3)
+            self.logger.info(f"Business: {len(items)} items after multi-stage pipeline from {len(articles)} raw articles")
+
+            return FetchResult(
+                source="adaptive_search",
+                section=Section.BUSINESS,
+                items=items,
+                fetch_time=asyncio.get_event_loop().time() - start,
+            )
+        except Exception as e:
+            self.logger.error(f"Business adaptive search failed: {e}")
+            return await self._handle_fetch_failure("adaptive_search", e)
 
     async def _fetch_tech_science(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
             # VISION.txt specifies: TLDR newsletter, MIT Tech Review, IEEE Spectrum, Quanta Magazine
-            self.logger.info("Fetching tech/science from specified sources via LLMLayer")
-            from datetime import datetime
-            today = datetime.now().strftime("%B %d, %Y")
-            
-            # More specific, current query with diverse tech topics
-            result = await self.llmlayer.search(
-                query=(
-                    f"Latest breakthrough technology science discovery innovation research 2025 {today}. "
-                    f"AI artificial intelligence machine learning breakthrough announcements. "
-                    f"Quantum computing research papers and discoveries. "
-                    f"Climate technology carbon capture renewable energy innovations. "
-                    f"Space exploration NASA SpaceX astronomy findings. "
-                    f"Biotech CRISPR gene therapy clinical trial results. "
-                    f"Robotics automation Boston Dynamics Tesla innovations. "
-                    f"From MIT Technology Review, IEEE Spectrum, Quanta Magazine, TLDR tech newsletter"
-                ),
-                max_results=30,  # Increase to get more variety
-                domains=["technologyreview.com", "spectrum.ieee.org", "quantamagazine.org", "tldr.tech"],
-                recency="month",  # Broader recency for tech publications
-                search_type="general"  # Tech articles aren't always "news"
-            )
+            self.logger.info("Fetching tech/science using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("tech_science")
             self.logger.info("Tech/Science: Got %d citations from MIT/IEEE/Quanta", len(result.citations))
             items_raw = [
                 {
                     "headline": c.title,
                     "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
                     "source": c.source_name,
                     "published": (c.published_date.isoformat() if c.published_date else None),
                 }
                 for c in result.citations
             ]
-            # Validate sources BEFORE other filtering
+            # Validate sources - allow any tech news source
             items_validated = self._validate_sources(
-                items_raw, 
-                ["technologyreview.com", "spectrum.ieee.org", "quantamagazine.org", "tldr.tech"],
+                items_raw,
+                [],  # Don't restrict to specific domains
                 "Tech/Science"
             )
             # Use multi-stage pipeline for better quality control and to ensure we get 3 items
-            items = self._apply_multi_stage_pipeline(items_validated, Section.TECH_SCIENCE, max_age_days=7, min_items=3)
+            items = self._apply_multi_stage_pipeline(items_validated, Section.TECH_SCIENCE, max_age_days=14, min_items=3)
             self.logger.info("Tech/Science: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
+
+            # FALLBACK: If we got nothing, try a broader search
+            if len(items) == 0:
+                self.logger.warning("Tech/Science: No items from preferred sources, trying broader search")
+                fallback_result = await self.llmlayer.search(
+                    query=(
+                        f"breakthrough technology science AI quantum computing {today} "
+                        f"artificial intelligence machine learning robotics space exploration "
+                        f"climate technology biotech CRISPR research innovation discovery"
+                    ),
+                    max_results=20,
+                    # Remove strict domain filter for fallback
+                    recency="week",
+                    search_type="general"
+                )
+
+                fallback_items = [
+                    {
+                        "headline": c.title,
+                        "url": c.url,
+                        "summary_text": c.snippet,
+                        "source": c.source_name,
+                        "published": (c.published_date.isoformat() if c.published_date else None),
+                    }
+                    for c in fallback_result.citations
+                ]
+
+                # Apply source ranking instead of strict filtering
+                if self.source_ranking_service:
+                    fallback_items = self.source_ranking_service.process_and_rank(fallback_items, "technology")
+
+                # Take top 3 items
+                items = fallback_items[:3] if fallback_items else []
+                self.logger.info(f"Tech/Science fallback: Retrieved {len(items)} items")
+
             return FetchResult("llmlayer", Section.TECH_SCIENCE, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
@@ -478,32 +462,28 @@ class ContentAggregator:
     async def _fetch_startup_insights(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # VISION.txt specifies: YC Blog, First Round Review, Founders Podcast
-            self.logger.info("Fetching startup insights from YC/First Round via LLMLayer")
-            result = await self.llmlayer.search(
-                query="What are the latest startup insights and founder advice from Y Combinator blog and First Round Review? Focus on scaling strategies, product-market fit, fundraising, and practical founder lessons",
-                max_results=10,  # Fetch 10, then validate and rank to best 2-3
-                domains=["ycombinator.com", "firstround.com", "review.firstround.com"],
-                recency="week"
-            )
+            # Use tier-based validation: fetch broadly and let tier system filter
+            self.logger.info("Fetching startup insights using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("startup")
             items_raw = [
                 {
                     "headline": c.title,
                     "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
                     "source": c.source_name,
                     "published": (c.published_date.isoformat() if c.published_date else None),
                 }
                 for c in result.citations
             ]
-            # Validate sources BEFORE other filtering
+            # Use tier-based source validation (no hardcoded domains)
             items_validated = self._validate_sources(
                 items_raw,
-                ["ycombinator.com", "firstround.com", "review.firstround.com"],
+                [],  # Empty allowed_domains - tier system handles this
                 "Startup"
             )
             # Use multi-stage pipeline for better quality control and to ensure we get 3 items
-            items = self._apply_multi_stage_pipeline(items_validated, Section.STARTUP, max_age_days=14, min_items=3)
+            items = self._apply_multi_stage_pipeline(items_validated, Section.STARTUP, max_age_days=14, min_items=2)
             return FetchResult("llmlayer", Section.STARTUP, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
@@ -512,26 +492,9 @@ class ContentAggregator:
         start = asyncio.get_event_loop().time()
         try:
             # VISION.txt allows: Associated Press and other nonpartisan sources, US politics only
-            self.logger.info("Fetching US politics from multiple trusted sources via LLMLayer")
-            from datetime import datetime
-            today = datetime.now().strftime("%B %d, %Y")
-            
-            # Broader query to catch more political news
-            result = await self.llmlayer.search(
-                query=(
-                    f"Major US federal political developments happening {today} or yesterday. "
-                    f"Include: Congressional actions, votes, bills, legislation, "
-                    f"Supreme Court decisions, rulings, cases, "
-                    f"Presidential executive orders, White House announcements, "
-                    f"Cabinet news, federal agency decisions, policy changes. "
-                    f"From trusted nonpartisan sources like Associated Press, Reuters, PBS, NPR, BBC. "
-                    f"EXCLUDE entertainment, sports, celebrity news."
-                ),
-                max_results=25,  # Increase to find more political content
-                domains=["apnews.com", "reuters.com", "pbs.org", "npr.org", "bbc.com", "propublica.org"],  # Multiple trusted sources
-                recency="day",
-                search_type="news"  # Use news search type for political news
-            )
+            self.logger.info("Fetching US politics using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("politics")
             
             self.logger.info(f"Politics: Got {len(result.citations)} citations from initial search")
             
@@ -539,7 +502,7 @@ class ContentAggregator:
                 {
                     "headline": c.title,
                     "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
                     "source": c.source_name,
                     "published": (c.published_date.isoformat() if c.published_date else None),
                 }
@@ -552,8 +515,8 @@ class ContentAggregator:
                 "bbc.com", "bbc.co.uk", "propublica.org", "politico.com"
             ]
             items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
-            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
-            items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=2, min_items=3)
+            # Use multi-stage pipeline for better quality control and to ensure we get exactly 2 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=2, min_items=2)
             self.logger.info("Politics: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
             
             # If we still have too few items, try a fallback search
@@ -574,7 +537,7 @@ class ContentAggregator:
                     {
                         "headline": c.title,
                         "url": c.url,
-                        "content": c.snippet,
+                        "summary_text": c.snippet,
                         "source": c.source_name,
                         "published": (c.published_date.isoformat() if c.published_date else None),
                     }
@@ -590,8 +553,8 @@ class ContentAggregator:
                 
                 # Re-filter combined items
                 items_validated = self._validate_sources(items_raw, trusted_sources, "Politics")
-                # Use multi-stage pipeline even in fallback
-                items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=3, min_items=3)
+                # Use multi-stage pipeline even in fallback (target 2)
+                items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=3, min_items=2)
                 self.logger.info(f"Politics: After fallback, {len(items)} final items from {len(items_raw)} total")
             
             return FetchResult("llmlayer", Section.POLITICS, items, asyncio.get_event_loop().time() - start)
@@ -628,105 +591,186 @@ class ContentAggregator:
             # Log what we got from each source
             self.logger.info(f"Local: Got {len(miami_result.citations)} Miami Herald articles")
             self.logger.info(f"Local: Got {len(cornell_result.citations)} Cornell articles")
-            
-            # Combine citations from both searches
-            all_citations = miami_result.citations + cornell_result.citations
-            
-            items_raw = [
+
+            # Process Miami and Cornell separately to ensure 1+1 geographic balance
+            miami_items_raw = [
                 {
                     "headline": c.title,
                     "url": c.url,
-                    "content": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "summary_text": c.snippet,
                     "source": c.source_name,
                     "published": (c.published_date.isoformat() if c.published_date else None),
+                    "location": "Miami"  # Add location tag for tracking
                 }
-                for c in all_citations
+                for c in miami_result.citations
             ]
-            # Validate sources BEFORE other filtering
-            items_validated = self._validate_sources(
-                items_raw,
-                ["miamiherald.com", "news.cornell.edu", "cornellsun.com"],
-                "Local"
-            )
-            # Use multi-stage pipeline for better quality control and to ensure we get 3 items
-            items = self._apply_multi_stage_pipeline(items_validated, Section.LOCAL, max_age_days=14, min_items=3)
-            self.logger.info("Local: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
+
+            cornell_items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                    "location": "Cornell"  # Add location tag for tracking
+                }
+                for c in cornell_result.citations
+            ]
+
+            # Validate sources for each location separately - use generic "local" section
+            miami_validated = self._validate_sources(miami_items_raw, ["miamiherald.com"], "local")
+            cornell_validated = self._validate_sources(cornell_items_raw, ["news.cornell.edu", "cornellsun.com"], "local")
+
+            # Apply pipeline to each location separately and take top 1 from each
+            miami_processed = self._apply_multi_stage_pipeline(miami_validated, Section.LOCAL, max_age_days=14, min_items=1)
+            cornell_processed = self._apply_multi_stage_pipeline(cornell_validated, Section.LOCAL, max_age_days=14, min_items=1)
+
+            # Combine exactly 1 from each location (target: 1 Miami + 1 Cornell = 2 total)
+            items = []
+            if miami_processed:
+                items.append(miami_processed[0])  # Take best Miami article
+                self.logger.info("Local: Selected 1 Miami article")
+
+            if cornell_processed:
+                items.append(cornell_processed[0])  # Take best Cornell article
+                self.logger.info("Local: Selected 1 Cornell article")
+
+            if not items:
+                self.logger.warning("Local: No articles found from either Miami or Cornell")
+
+            total_raw = len(miami_validated) + len(cornell_validated)
+            self.logger.info("Local: %d items after multi-stage pipeline from %d raw (%d Miami + %d Cornell)",
+                           len(items), total_raw, len(miami_validated), len(cornell_validated))
             return FetchResult("llmlayer", Section.LOCAL, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return FetchResult("llmlayer", Section.LOCAL, [], asyncio.get_event_loop().time() - start, error=str(e))
 
-    async def _fetch_miscellaneous(self) -> FetchResult:
-        start = asyncio.get_event_loop().time()
+    async def _fetch_miscellaneous_search(self, search_name: str, custom_query: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Optimized method for miscellaneous searches using new configuration."""
         try:
-            # VISION.txt: Renaissance man topics - history, psychology, art, literature, health, 
-            # real estate, arts/music, philosophy (engineering removed to avoid Tech overlap)
-            self.logger.info("Miscellaneous: Fetching diverse intellectual content")
-            from datetime import datetime
-            today = datetime.now().strftime("%B %d, %Y")
-            
-            # Query for substantive intellectual content - Renaissance man vision
-            result = await self.llmlayer.search(
-                query=(
-                    f"Find the most intellectually stimulating articles from {today} and the past week. "
-                    f"Look for content from The Atlantic, New Yorker, Aeon, Nautilus, Quanta Magazine, "
-                    f"Paris Review, JSTOR, The Conversation, Psyche, Works in Progress, and similar publications.\n\n"
-                    f"Topics to explore:\n"
-                    f"- Historical discoveries, cultural analysis, archaeological findings\n"
-                    f"- Psychology breakthroughs, consciousness research, neuroscience\n"
-                    f"- Literary criticism, art movements, creative processes\n"
-                    f"- Philosophy, ethical debates, big ideas that challenge assumptions\n"
-                    f"- Longevity research, exercise science, human optimization\n"
-                    f"- Sociology insights, anthropological studies, human behavior patterns\n\n"
-                    f"Find articles with SUBSTANCE and DEPTH that expand intellectual horizons. "
-                    f"Look for long-form essays, research summaries, and thoughtful analysis. "
-                    f"PREFER: The Atlantic, Aeon, Quanta Magazine, New Yorker, Nautilus, "
-                    f"Paris Review, JSTOR Daily, The Conversation, Psyche, Works in Progress. "
-                    f"AVOID: routine news, press releases, clickbait, listicles, promotional content."
-                ),
-                max_results=50,  # Get MORE results since we'll filter heavily
-                recency="week",  # Recent but not necessarily today
-                search_type="general"
-                # NO domains parameter! This was the bug - it restricts to ONLY those domains
-                # We now let it search broadly and filter with SourceRankingService
-            )
-            
-            # Log the raw API response for debugging
-            self.logger.info(f"Miscellaneous: LLMLayer returned {len(result.citations)} citations")
-            self.logger.debug(f"Miscellaneous: Raw LLMLayer response - answer length: {len(result.answer) if result.answer else 0}")
-            
-            # Convert citations to our format
-            items_raw = [
+            self.logger.info(f"Miscellaneous/{search_name}: Starting optimized search")
+            # Use the optimized search method with optional custom query
+            result = await self.llmlayer.search_optimized_rate_limited("miscellaneous", custom_query)
+
+            items = [
                 {
                     "headline": c.title,
                     "url": c.url,
-                    "content": c.snippet,
+                    "summary_text": c.snippet,
                     "source": c.source_name,
                     "published": (c.published_date.isoformat() if c.published_date else None),
+                    "search_category": search_name  # Track which search found this
                 }
                 for c in result.citations
             ]
-            
-            # Log raw items for debugging
-            if items_raw:
-                self.logger.info(f"Miscellaneous: Found {len(items_raw)} raw items")
-                for i, item in enumerate(items_raw[:3]):
-                    self.logger.debug(f"Raw item {i+1}: '{item.get('headline', 'NO HEADLINE')[:80]}' from {item.get('source', 'UNKNOWN')}")
-            else:
-                self.logger.warning("Miscellaneous: LLMLayer returned citations but no items were created")
-            
-            # Apply date filtering
-            items = self._filter_items(items_raw, max_age_days=14)
-            
-            self.logger.info("Miscellaneous: %d items after filtering from %d raw", len(items), len(items_raw))
-            
-            if len(items) == 0:
-                self.logger.warning("Miscellaneous: No items survived filtering - may be a date/content issue")
-                # Log details for debugging
-                if items_raw:
-                    self.logger.debug("Miscellaneous: Sample raw item details:")
-                    for i, item in enumerate(items_raw[:2]):
-                        self.logger.debug(f"  Item {i+1}: headline='{item.get('headline', 'NONE')}', source='{item.get('source', 'NONE')}', published='{item.get('published', 'NONE')}'")
-            
+
+            self.logger.info(f"Miscellaneous/{search_name}: Found {len(items)} items")
+            return items
+
+        except Exception as e:
+            self.logger.error(f"Miscellaneous/{search_name} search failed: {e}")
+            return []
+
+    async def _fetch_miscellaneous(self) -> FetchResult:
+        start = asyncio.get_event_loop().time()
+        try:
+            self.logger.info("Miscellaneous: Launching optimized parallel intellectual search chain")
+            from datetime import datetime
+            today = datetime.now().strftime("%B %d, %Y")
+            month_year = datetime.now().strftime("%B %Y")
+
+            # Advanced search chaining strategy with custom queries for deeper coverage
+            specialized_queries = [
+                # Philosophy & Critical Thinking
+                (f"Philosophy essays moral philosophy ethics epistemology consciousness {month_year}. "
+                 f"Critical thinking cultural criticism political philosophy ancient wisdom contemporary debates. "
+                 f"Human nature existence meaning life death consciousness free will.", "Philosophy"),
+
+                # Arts & Literature
+                (f"Literary criticism poetry fiction creative writing art criticism {month_year}. "
+                 f"Contemporary literature aesthetic theory artistic movements cultural commentary. "
+                 f"Music theory architecture theater design philosophy creative process.", "Arts_Literature"),
+
+                # Psychology & Human Behavior
+                (f"Psychology research neuroscience behavioral science cognitive science {month_year}. "
+                 f"Mental health consciousness studies social psychology human behavior. "
+                 f"Cognitive biases decision making emotional intelligence wellbeing.", "Psychology"),
+
+                # Interdisciplinary & Sociology
+                (f"Interdisciplinary research sociology anthropology linguistics urban studies {month_year}. "
+                 f"Social commentary cultural analysis environmental humanities media studies. "
+                 f"Education theory religious studies big ideas that transcend categories.", "Interdisciplinary"),
+
+                # History & Civilization
+                (f"Historical analysis historical patterns civilizational studies {month_year}. "
+                 f"Cultural history intellectual history history of ideas social movements. "
+                 f"Historical perspective lessons from past civilizations.", "History")
+            ]
+
+            # Execute all searches sequentially to respect rate limits
+            items_raw = []
+
+            for query, search_name in specialized_queries:
+                try:
+                    self.logger.info(f"Miscellaneous/{search_name}: Starting search...")
+                    results = await self._fetch_miscellaneous_search(search_name, query)
+                    items_raw.extend(results)
+                    self.logger.info(f"✓ Miscellaneous/{search_name}: Retrieved {len(results)} items")
+
+                    # Add small delay between searches to respect rate limits
+                    if search_name != "History":  # Don't delay after the last search
+                        delay = 2.0  # 2 second delay between miscellaneous searches
+                        self.logger.info(f"Rate limit delay: {delay}s before next miscellaneous search...")
+                        await asyncio.sleep(delay)
+
+                except Exception as e:
+                    self.logger.error(f"✗ Miscellaneous/{search_name} search failed: {e}")
+                    # Continue with other searches even if one fails
+
+            self.logger.info(f"Miscellaneous: Combined {len(items_raw)} total items from 5 optimized searches")
+
+            # Validate sources (now just adds scores, doesn't filter)
+            items_validated = self._validate_sources(items_raw, [], "intellectual")
+
+            # Use multi-stage pipeline to ensure exactly 5 items
+            items = self._apply_multi_stage_pipeline(items_validated, Section.MISCELLANEOUS, max_age_days=30, min_items=5)
+
+            # Ensure diversity: no more than 2 items from any single search category
+            if len(items) >= 5:
+                # Track which categories are represented
+                category_counts = {}
+                diverse_items = []
+
+                for item in items:
+                    category = item.get('search_category', 'unknown')
+                    count = category_counts.get(category, 0)
+
+                    # Add item if we haven't exceeded limit for this category
+                    if count < 2:
+                        diverse_items.append(item)
+                        category_counts[category] = count + 1
+
+                        if len(diverse_items) >= 5:
+                            break
+
+                # If we still need more items after diversity filtering, add any remaining
+                if len(diverse_items) < 5:
+                    for item in items:
+                        if item not in diverse_items:
+                            diverse_items.append(item)
+                            if len(diverse_items) >= 5:
+                                break
+
+                items = diverse_items[:5]
+                self.logger.info(f"Miscellaneous: Selected {len(items)} diverse items from {category_counts}")
+
+            self.logger.info("Miscellaneous: %d items after pipeline from %d raw", len(items), len(items_raw))
+
+            # With 5 optimized parallel searches, we should have plenty of content
+            # If we somehow still don't have 5 items, log a warning
+            if len(items) < 5:
+                self.logger.warning(f"Miscellaneous: Only got {len(items)} items from 5 optimized parallel searches with {len(items_raw)} raw items")
+
             return FetchResult("llmlayer", Section.MISCELLANEOUS, items, asyncio.get_event_loop().time() - start)
             
         except Exception as e:  # noqa: BLE001
@@ -787,7 +831,7 @@ class ContentAggregator:
                     all_items.append({
                         "headline": f"First Reading: {reference}",
                         "url": base_url,
-                        "content": readings.first_reading.get('text', ''),
+                        "summary_text": readings.first_reading.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                         "preserve_original": True,  # Flag to skip summarization
@@ -799,7 +843,7 @@ class ContentAggregator:
                     all_items.append({
                         "headline": f"Second Reading: {reference}",
                         "url": base_url,
-                        "content": readings.second_reading.get('text', ''),
+                        "summary_text": readings.second_reading.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                         "preserve_original": True,  # Flag to skip summarization
@@ -811,7 +855,7 @@ class ContentAggregator:
                     all_items.append({
                         "headline": f"Gospel: {reference}",
                         "url": base_url,
-                        "content": readings.gospel.get('text', ''),
+                        "summary_text": readings.gospel.get('text', ''),
                         "source": "USCCB Daily Readings", 
                         "published": published,
                         "preserve_original": True,  # Flag to skip summarization
@@ -823,7 +867,7 @@ class ContentAggregator:
                     all_items.append({
                         "headline": f"Responsorial Psalm: {psalm_ref}",
                         "url": base_url,
-                        "content": readings.responsorial_psalm.get('text', ''),
+                        "summary_text": readings.responsorial_psalm.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                         "preserve_original": True,  # Flag to skip summarization
@@ -848,7 +892,7 @@ class ContentAggregator:
                         all_items.append({
                             "headline": "Catholic Daily Reflection",  # Consistent title
                             "url": item.link,
-                            "content": item.content or item.description,  # Use full content if available
+                            "summary_text": item.content or item.description,  # Use full content if available
                             "source": "Catholic Daily Reflections",
                             "published": item.published_date.isoformat() if item.published_date else datetime.now().isoformat(),
                             "preserve_original": False,  # This one should be summarized
@@ -862,7 +906,7 @@ class ContentAggregator:
                         all_items.append({
                             "headline": "Catholic Daily Reflection",
                             "url": item.link,
-                            "content": item.content or item.description,
+                            "summary_text": item.content or item.description,
                             "source": "Catholic Daily Reflections",
                             "published": item.published_date.isoformat() if item.published_date else datetime.now().isoformat(),
                             "preserve_original": False,
@@ -1012,7 +1056,7 @@ class ContentAggregator:
                         "url": p.get("url"),
                         "source_url": p.get("url"),  # Add source_url for email template
                         "abstract": p.get("abstract"),
-                        "content": p.get("abstract"),  # Add content field
+                        "summary_text": p.get("abstract"),  # Add summary_text field
                         "source": "arXiv",  # Add source field
                         "authors": p.get("authors", []),
                         "published": p.get("published"),
@@ -1202,7 +1246,7 @@ class ContentAggregator:
                         "url": p.pdf_url,
                         "source_url": p.pdf_url,
                         "abstract": p.abstract,
-                        "content": p.abstract,
+                        "summary_text": p.abstract,
                         "source": f"arXiv ({', '.join(p.categories[:2])})",  # Include categories in source
                         "authors": p.authors,
                         "published": p.published_date.isoformat(),
@@ -1252,7 +1296,7 @@ class ContentAggregator:
                     readings_items.append({
                         "headline": f"First Reading: {readings.first_reading.get('reference', 'Daily Reading')}",
                         "url": base_url,
-                        "content": readings.first_reading.get('text', ''),
+                        "summary_text": readings.first_reading.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                     })
@@ -1262,7 +1306,7 @@ class ContentAggregator:
                     readings_items.append({
                         "headline": f"Responsorial Psalm: {readings.responsorial_psalm.get('reference', 'Psalm')}",
                         "url": base_url,
-                        "content": readings.responsorial_psalm.get('text', ''),
+                        "summary_text": readings.responsorial_psalm.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                     })
@@ -1272,7 +1316,7 @@ class ContentAggregator:
                     readings_items.append({
                         "headline": f"Gospel: {readings.gospel.get('reference', 'Daily Gospel')}",
                         "url": base_url,
-                        "content": readings.gospel.get('text', ''),
+                        "summary_text": readings.gospel.get('text', ''),
                         "source": "USCCB Daily Readings",
                         "published": published,
                     })
@@ -1282,7 +1326,7 @@ class ContentAggregator:
                     readings_items.append({
                         "headline": "Daily Reflection",
                         "url": base_url,
-                        "content": readings.reflection,
+                        "summary_text": readings.reflection,
                         "source": "USCCB Daily Readings",
                         "published": published,
                     })
@@ -1292,7 +1336,7 @@ class ContentAggregator:
                     readings_items.append({
                         "headline": "Saint of the Day",
                         "url": base_url,
-                        "content": readings.saint_of_day,
+                        "summary_text": readings.saint_of_day,
                         "source": "USCCB Daily Readings",
                         "published": published,
                     })
@@ -1333,7 +1377,7 @@ class ContentAggregator:
                         theme_analysis_input[section] = [
                             {
                                 'headline': item.headline,
-                                'content': item.content,
+                                'summary_text': item.summary_text,
                                 'source': item.source,
                                 'url': item.url,
                                 'id': item.id
@@ -1404,7 +1448,7 @@ class ContentAggregator:
                     headline=item.get("headline", "Daily Reading"),
                     url=item.get("url", ""),
                     source=item.get("source", "Catholic Church"),
-                    content=item.get("content", ""),
+                    summary_text=item.get("summary_text", ""),
                     section=section,
                     published_date=published_date,
                     # All 7 Renaissance scores - Catholic content gets perfect scores
@@ -1428,12 +1472,79 @@ class ContentAggregator:
 
     def _validate_sources(self, items: List[Dict[str, Any]], allowed_domains: List[str], section_name: str) -> List[Dict[str, Any]]:
         """
-        NO VALIDATION - just return what LLMLayer gives us.
-        LLMLayer knows what it's doing.
+        Enrich items with source authority scores for AI ranking.
+        No longer filters - just adds source scores that feed into the AI ranking.
         """
-        # Just log what we got for debugging
-        self.logger.debug(f"{section_name}: Got {len(items)} items from LLMLayer")
-        return items
+        # Load source authority config if available
+        if not self.source_ranking_config:
+            # Add default source authority score if no config
+            for item in items:
+                item['source_authority'] = 5.0  # Default middle score
+            return items
+
+        # Build source score map from tier configuration
+        tier_scores = {}
+        blacklist_sources = set()
+
+        for tier_name, tier_data in self.source_ranking_config.items():
+            if tier_name == 'config':
+                continue
+            if tier_name == 'blacklist':
+                # Only keep blacklist for truly problematic sources
+                blacklist_sources.update(tier_data.get('sources', []))
+                continue
+
+            sources = tier_data.get('sources', [])
+            score = tier_data.get('score', 5)
+            for source in sources:
+                tier_scores[source.lower().replace('www.', '')] = float(score)
+
+        enriched_items = []
+        blacklisted_count = 0
+
+        for item in items:
+            # Extract source domain from URL or source field
+            source_domain = ""
+            if 'url' in item and item['url']:
+                from urllib.parse import urlparse
+                try:
+                    parsed = urlparse(item['url'])
+                    source_domain = parsed.netloc.lower().replace('www.', '')
+                except:
+                    pass
+
+            # Also check the source field directly
+            if not source_domain and 'source' in item and item['source']:
+                source_domain = item['source'].lower().replace('www.', '').strip()
+
+            # Only filter out truly blacklisted sources
+            is_blacklisted = False
+            for black_source in blacklist_sources:
+                if black_source.lower() in source_domain or source_domain in black_source.lower():
+                    is_blacklisted = True
+                    blacklisted_count += 1
+                    self.logger.debug(f"Skipping blacklisted source '{source_domain}'")
+                    break
+
+            if is_blacklisted:
+                continue
+
+            # Find tier score for this source or use default
+            source_score = 5.0  # Default middle score for unknown sources
+            for tier_source, score in tier_scores.items():
+                if tier_source in source_domain or source_domain in tier_source:
+                    source_score = score
+                    break
+
+            # Add source authority score to item for AI ranking
+            item['source_authority'] = source_score
+            enriched_items.append(item)
+
+        if blacklisted_count > 0:
+            self.logger.info(f"{section_name}: Filtered {blacklisted_count} blacklisted sources")
+
+        self.logger.info(f"{section_name}: Enriched {len(enriched_items)} items with source authority scores")
+        return enriched_items
     
     def _apply_multi_stage_pipeline(
         self, 
@@ -1451,9 +1562,9 @@ class ContentAggregator:
         Stage 4: Diversity limits
         Stage 5: Fallback if needed
         """
-        # Stage 1: Basic filtering
-        filtered = self._filter_items(items, max_age_days)
-        self.logger.info(f"{section}: Stage 1 - {len(items)} -> {len(filtered)} after basic filtering")
+        # Stage 1: Adaptive filtering based on content availability
+        filtered = self._filter_items_adaptive(items, max_age_days, min_items, section)
+        self.logger.info(f"{section}: Stage 1 - {len(items)} -> {len(filtered)} after adaptive filtering")
         
         # Convert to NewsItem objects for source ranking
         from src.models.content import NewsItem
@@ -1468,34 +1579,25 @@ class ContentAggregator:
                     published_date = dateutil.parser.parse(item["published"])
                 
                 news_item = NewsItem(
-                    id=item.get("url", ""),
                     url=item.get("url", ""),
                     headline=item.get("headline", ""),
-                    content=item.get("content", ""),
+                    summary_text=item.get("summary_text", ""),
                     source=item.get("source", ""),
                     published_date=published_date,
-                    section=section
+                    source_url=item.get("url", "")
                 )
                 news_items.append(news_item)
             except Exception as e:
                 self.logger.warning(f"Failed to create NewsItem: {e}")
                 continue
         
-        # Stage 2 & 3: Source ranking and quality filtering
-        min_score = 3.0  # Default minimum score
-        if section in [Section.BREAKING_NEWS, Section.POLITICS]:
-            min_score = 6.0  # Higher standards for news sections
-        elif section == Section.MISCELLANEOUS:
-            min_score = 4.0  # Medium standards for misc intellectual content
-        
-        ranked_items = self.source_ranker.process_and_rank(
-            news_items,
-            min_score=min_score,
-            apply_diversity=True,
-            max_items=None  # Don't limit yet
-        )
-        
-        self.logger.info(f"{section}: Stage 2&3 - {len(news_items)} -> {len(ranked_items)} after source ranking")
+        # Stage 2: Adjust quality thresholds based on content availability
+        quality_adjustment = self._calculate_quality_adjustment(len(filtered), min_items)
+        self.logger.info(f"{section}: Content availability adjustment: {quality_adjustment:.2f} (lower is more lenient)")
+
+        # Pass items through for AI ranking with context about availability
+        ranked_items = news_items
+        self.logger.info(f"{section}: Stage 2 - {len(ranked_items)} items ready for AI ranking with quality adjustment {quality_adjustment:.2f}")
         
         # Convert back to dict format
         result = []
@@ -1503,7 +1605,7 @@ class ContentAggregator:
             result.append({
                 "headline": item.headline,
                 "url": item.url,
-                "content": item.content,
+                "summary_text": item.summary_text,
                 "source": item.source,
                 "published": item.published_date.isoformat() if item.published_date else None,
             })
@@ -1515,6 +1617,62 @@ class ContentAggregator:
         
         return result
     
+    def _filter_items_adaptive(self, items: List[Dict[str, Any]], max_age_days: int, target_count: int = 3, section: str = "general") -> List[Dict[str, Any]]:
+        """
+        Adaptive filtering that adjusts standards based on content availability.
+        Uses progressive relaxation to ensure newsletter completeness while maintaining quality.
+        """
+        from datetime import datetime, timedelta
+        import re
+
+        self.logger.info(f"📋 Adaptive filtering {len(items)} items for {section} (target: {target_count}, max_age: {max_age_days} days)")
+
+        # First pass: Apply strict filtering
+        strict_filtered = self._filter_items(items, max_age_days)
+        self.logger.info(f"📊 Strict filtering: {len(items)} → {len(strict_filtered)} ({len(strict_filtered)/len(items)*100:.1f}% kept)")
+
+        # If we have enough high-quality articles, return them
+        if len(strict_filtered) >= target_count:
+            self.logger.info(f"✅ Target reached with strict filtering: {len(strict_filtered)} articles")
+            return strict_filtered
+
+        # Progressive relaxation if we don't have enough articles
+        self.logger.warning(f"⚠️ Only {len(strict_filtered)} articles after strict filtering, applying adaptive relaxation")
+
+        # Relaxation strategy 1: Slightly extend temporal window for this section
+        if max_age_days < 7:
+            relaxed_age = min(max_age_days + 2, 7)  # Add 2 days, cap at 7
+            self.logger.info(f"🔄 Relaxation 1: Extending age limit from {max_age_days} to {relaxed_age} days")
+            relaxed_filtered = self._filter_items(items, relaxed_age)
+
+            if len(relaxed_filtered) >= target_count:
+                self.logger.info(f"✅ Target reached with relaxed age filtering: {len(relaxed_filtered)} articles")
+                return relaxed_filtered
+
+        # Relaxation strategy 2: Less aggressive domain filtering
+        self.logger.info("🔄 Relaxation 2: Applying lenient domain filtering")
+        lenient_filtered = self._filter_items_lenient(items, max_age_days)
+
+        if len(lenient_filtered) >= target_count:
+            self.logger.info(f"✅ Target reached with lenient filtering: {len(lenient_filtered)} articles")
+            return lenient_filtered
+
+        # Relaxation strategy 3: Accept articles without dates if they're high quality
+        if section in ["miscellaneous", "tech_science", "research_papers"]:
+            self.logger.info("🔄 Relaxation 3: Including articles without dates for intellectual content")
+            no_date_filtered = self._filter_items_allow_no_date(items, max_age_days, section)
+
+            if len(no_date_filtered) >= target_count:
+                self.logger.info(f"✅ Target reached with no-date tolerance: {len(no_date_filtered)} articles")
+                return no_date_filtered
+
+        # Final fallback: Return what we have, sorted by quality indicators
+        final_articles = lenient_filtered or strict_filtered or []
+        final_articles = self._sort_by_quality_indicators(final_articles)
+
+        self.logger.warning(f"⚠️ Adaptive filtering complete: {len(final_articles)} articles (target was {target_count})")
+        return final_articles
+
     def _filter_items(self, items: List[Dict[str, Any]], max_age_days: int) -> List[Dict[str, Any]]:
         """
         Quality and freshness filter for LLMLayer-derived items.
@@ -1543,13 +1701,13 @@ class ContentAggregator:
             # Wikipedia - not a primary source
             "en.wikipedia.org", "wikipedia.org",
             # Event platforms
-            "www.eventbrite.com", "eventbrite.com", 
+            "www.eventbrite.com", "eventbrite.com",
             # Known unreliable or low-quality
             "ts2.tech", "www.ts2.tech",
             "buzzfeed.com", "www.buzzfeed.com",
             "medium.com",  # User-generated content
             "substack.com",  # Unless specific trusted authors
-            
+
             # Foreign/Non-English news sources
             "thehindu.com", "www.thehindu.com",
             "hindustantimes.com", "www.hindustantimes.com",
@@ -1563,25 +1721,13 @@ class ContentAggregator:
             "koreaherald.com", "www.koreaherald.com",
             "bangkokpost.com", "www.bangkokpost.com",
             
-            # Low-quality US sources
-            "newsweek.com", "www.newsweek.com",
-            "nymag.com", "www.nymag.com",
-            "intelligencer.com", "www.intelligencer.com",
+            # Low-quality US sources - only block the worst offenders
             "theintelligencer.net", "www.theintelligencer.net",
             "pressgazette.co.uk", "www.pressgazette.co.uk",
-            "usnews.com", "www.usnews.com",
-            "bostonherald.com", "www.bostonherald.com",
-            "semafor.com", "www.semafor.com",
-            "cnn.com", "www.cnn.com",  # Often sensationalist
-            "foxnews.com", "www.foxnews.com",  # Often biased
-            "msnbc.com", "www.msnbc.com",  # Often biased
             
-            # Financial spam/low-quality
-            "yahoo.com", "finance.yahoo.com",
+            # Financial spam/low-quality - only block the worst
             "ainvest.com", "www.ainvest.com",
             "markets.financialcontent.com",
-            "thefiscaltimes.com", "www.thefiscaltimes.com",
-            "marketwatch.com", "www.marketwatch.com",
             "seekingalpha.com", "www.seekingalpha.com",
             "fool.com", "www.fool.com",  # Motley Fool
             
@@ -1589,12 +1735,7 @@ class ContentAggregator:
             "cnbcafrica.com", "www.cnbcafrica.com",
             "allafrica.com", "www.allafrica.com",
             
-            # Academic/Newsletter aggregators (not news)
-            "mdpi.com", "www.mdpi.com",
-            "tandfonline.com", "www.tandfonline.com",
-            "eurekalert.org", "www.eurekalert.org",
-            "sciencedaily.com", "www.sciencedaily.com",
-            "phys.org", "www.phys.org",
+            # Academic publishers (keep only those that are truly problematic)
         }
         def domain(u: str) -> str:
             try:
@@ -1610,9 +1751,10 @@ class ContentAggregator:
                 return True  # Always reject articles without dates
             try:
                 dt = datetime.fromisoformat(published)
-                # Additional check: reject anything from before 2024
-                if dt.year < 2024:
-                    self.logger.debug(f"❌ Article from {dt.year} - too old")
+                # Intelligent year check: reject if article is more than 2 years old
+                two_years_ago = datetime.now().year - 2
+                if dt.year < two_years_ago:
+                    self.logger.debug(f"❌ Article from {dt.year} - more than 2 years old")
                     return True
                 # Hard cutoff: nothing older than 30 days
                 if dt < hard_cutoff:
@@ -1717,8 +1859,198 @@ class ContentAggregator:
         final_count = len(filtered)
         filter_rate = (initial_count - final_count) / initial_count if initial_count > 0 else 0
         self.logger.info(f"📊 Filter results: {initial_count} → {final_count} ({filter_rate:.1%} filtered)")
-        
+
         return filtered
+
+    def _filter_items_lenient(self, items: List[Dict[str, Any]], max_age_days: int) -> List[Dict[str, Any]]:
+        """Lenient filtering with relaxed domain restrictions"""
+        from datetime import datetime, timedelta
+        import re
+
+        cutoff = datetime.now() - timedelta(days=max_age_days)
+        hard_cutoff = datetime.now() - timedelta(days=30)
+
+        # Reduced bad domains list - only block the worst offenders
+        bad_domains = {
+            "youtube.com", "www.youtube.com",
+            "reddit.com", "www.reddit.com",
+            "twitter.com", "x.com",
+            "facebook.com", "www.facebook.com",
+            "buzzfeed.com", "www.buzzfeed.com",
+            "ts2.tech", "www.ts2.tech",
+        }
+
+        def domain(u: str) -> str:
+            try:
+                from urllib.parse import urlparse
+                return (urlparse(u).netloc or u).lower()
+            except Exception:
+                return ""
+
+        def too_old_lenient(published: Optional[str]) -> bool:
+            if not published:
+                return True  # Still reject articles without dates
+            try:
+                dt = datetime.fromisoformat(published)
+                # Only hard cutoff applies
+                if dt < hard_cutoff:
+                    return True
+                return False
+            except Exception:
+                return True
+
+        filtered = []
+        for item in items:
+            url = item.get("url") or ""
+            headline = (item.get("headline") or "").strip()
+
+            if not url or not headline:
+                continue
+
+            url_domain = domain(url)
+            if url_domain in bad_domains:
+                continue
+
+            if too_old_lenient(item.get("published")):
+                continue
+
+            filtered.append(item)
+
+        return filtered
+
+    def _filter_items_allow_no_date(self, items: List[Dict[str, Any]], max_age_days: int, section: str) -> List[Dict[str, Any]]:
+        """Filter allowing articles without dates for intellectual content sections"""
+        from datetime import datetime, timedelta
+        import re
+
+        cutoff = datetime.now() - timedelta(days=max_age_days)
+        hard_cutoff = datetime.now() - timedelta(days=30)
+
+        # Very minimal bad domains for intellectual content
+        bad_domains = {
+            "youtube.com", "www.youtube.com",
+            "reddit.com", "www.reddit.com",
+            "buzzfeed.com", "www.buzzfeed.com",
+        }
+
+        def domain(u: str) -> str:
+            try:
+                from urllib.parse import urlparse
+                return (urlparse(u).netloc or u).lower()
+            except Exception:
+                return ""
+
+        def is_quality_intellectual_source(url_domain: str) -> bool:
+            """Check if source is suitable for intellectual content even without date"""
+            quality_domains = {
+                "aeon.co", "theatlantic.com", "newyorker.com", "harpers.org",
+                "lrb.co.uk", "nybooks.com", "philosophynow.org", "plato.stanford.edu",
+                "sep.stanford.edu", "iep.utm.edu", "jstor.org", "academia.edu"
+            }
+            return any(quality in url_domain for quality in quality_domains)
+
+        filtered = []
+        for item in items:
+            url = item.get("url") or ""
+            headline = (item.get("headline") or "").strip()
+            published = item.get("published")
+
+            if not url or not headline:
+                continue
+
+            url_domain = domain(url)
+            if url_domain in bad_domains:
+                continue
+
+            # Allow articles without dates if from quality intellectual sources
+            if not published:
+                if is_quality_intellectual_source(url_domain):
+                    self.logger.debug(f"✅ Accepting no-date article from quality source: {url_domain}")
+                    filtered.append(item)
+                continue
+
+            # For articles with dates, apply lenient age filtering
+            try:
+                dt = datetime.fromisoformat(published)
+                if dt < hard_cutoff:
+                    continue
+                filtered.append(item)
+            except Exception:
+                # If we can't parse date but it's from a quality source, include it
+                if is_quality_intellectual_source(url_domain):
+                    filtered.append(item)
+                continue
+
+        return filtered
+
+    def _sort_by_quality_indicators(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort articles by quality indicators when quantity is limited"""
+        def quality_score(item):
+            score = 0
+            source = item.get("source", "").lower()
+            url = item.get("url", "").lower()
+            headline = item.get("headline", "")
+            summary = item.get("summary_text", "")
+
+            # Source quality (higher is better)
+            premium_sources = ["reuters", "ap news", "bbc", "wsj", "ft", "bloomberg", "nature", "science"]
+            if any(premium in source for premium in premium_sources):
+                score += 30
+
+            quality_sources = ["npr", "guardian", "economist", "atlantic", "newyorker"]
+            if any(quality in source for quality in quality_sources):
+                score += 20
+
+            # Content depth indicators
+            if len(summary) > 500:
+                score += 10
+            elif len(summary) > 200:
+                score += 5
+
+            # Headline quality (avoid clickbait)
+            if len(headline.split()) > 8:  # Longer headlines often more substantive
+                score += 5
+
+            # Prefer articles with specific details
+            if any(word in headline.lower() for word in ["study", "research", "analysis", "report"]):
+                score += 10
+
+            # Domain authority bonus
+            authority_domains = [".edu", ".gov", ".org"]
+            if any(domain in url for domain in authority_domains):
+                score += 15
+
+            return score
+
+        return sorted(items, key=quality_score, reverse=True)
+
+    def _calculate_quality_adjustment(self, available_count: int, target_count: int) -> float:
+        """
+        Calculate quality adjustment factor based on content availability.
+        Returns multiplier for quality thresholds (lower = more lenient)
+        """
+        if available_count >= target_count * 3:
+            # Plenty of content - use strict standards
+            adjustment = 1.0
+            self.logger.debug(f"📊 Quality adjustment: Abundant content ({available_count} >= {target_count * 3}), strict standards")
+        elif available_count >= target_count * 2:
+            # Good amount of content - standard quality
+            adjustment = 0.9
+            self.logger.debug(f"📊 Quality adjustment: Good content availability ({available_count} >= {target_count * 2}), standard quality")
+        elif available_count >= target_count:
+            # Just enough content - slightly lenient
+            adjustment = 0.8
+            self.logger.debug(f"📊 Quality adjustment: Adequate content ({available_count} >= {target_count}), slightly lenient")
+        elif available_count >= target_count * 0.7:
+            # Limited content - more lenient
+            adjustment = 0.7
+            self.logger.debug(f"📊 Quality adjustment: Limited content ({available_count} < {target_count}), more lenient")
+        else:
+            # Very limited content - most lenient while maintaining basic standards
+            adjustment = 0.6
+            self.logger.debug(f"📊 Quality adjustment: Scarce content ({available_count} < {target_count * 0.7}), most lenient")
+
+        return adjustment
 
     async def _rank_items(self, items: List[Dict[str, Any]], section: str) -> List[RankedItem]:
         ranked_items: List[RankedItem] = []
@@ -1766,7 +2098,7 @@ class ContentAggregator:
 
             url = item.get("url") or item.get("link") or f"item://{section}/{idx}"
             headline = item.get("headline") or item.get("title") or "Untitled"
-            content = item.get("content") or item.get("abstract") or item.get("description") or ""
+            content = item.get("summary_text") or item.get("abstract") or item.get("description") or ""
             source = item.get("source") or item.get("source_feed") or ""
             published_raw = item.get("published") or item.get("published_date")
             
@@ -1781,17 +2113,20 @@ class ContentAggregator:
                     published_dt = published_raw
                     self.logger.debug(f"Using datetime object: {published_dt}")
                 else:
-                    published_dt = datetime.now()
-                    self.logger.warning(f"DEFAULTING TO NOW: No valid date for '{headline[:50]}...', published_raw={published_raw}")
+                    # CRITICAL FIX: Don't default to now() for failed dates - this makes old articles appear current!
+                    # Skip items with unparseable dates instead
+                    self.logger.warning(f"SKIPPING: No valid date for '{headline[:50]}...', published_raw={published_raw}")
+                    continue  # Skip this item entirely
             except Exception as e:
-                published_dt = datetime.now()
-                self.logger.warning(f"DEFAULTING TO NOW: Date parsing failed for '{headline[:50]}...', published_raw='{published_raw}', error: {e}")
+                # CRITICAL FIX: Don't default to now() - skip items with unparseable dates
+                self.logger.warning(f"SKIPPING: Date parsing failed for '{headline[:50]}...', published_raw='{published_raw}', error: {e}")
+                continue  # Skip this item entirely
 
             ranked_item = RankedItem(
                 id=str(idx + 1),
                 url=url,
                 headline=headline,
-                content=content,
+                summary_text=content,
                 source=source,
                 section=section,
                 published_date=published_dt,
@@ -1826,14 +2161,10 @@ class ContentAggregator:
         # Get theme analysis for diversity enforcement
         theme_analysis = self.get_theme_analysis()
         
-        # Calculate dynamic thresholds based on content quality and availability
-        try:
-            # Now we can properly call async methods since this function is async
-            dynamic_thresholds = await self._calculate_dynamic_quality_thresholds(ranked_sections)
-            self.logger.info("Applied dynamic quality thresholds")
-        except Exception as e:
-            self.logger.warning(f"Dynamic threshold calculation failed: {e} - using static thresholds")
-            dynamic_thresholds = {section: self._normalized_threshold() for section in ranked_sections.keys()}
+        # Use fixed quality threshold - no dynamic adjustments
+        # We want consistent quality standards across all sections
+        fixed_threshold = 4.0  # Fixed threshold on 10-point scale
+        self.logger.info(f"Using fixed quality threshold of {fixed_threshold} for all sections")
         
         # Assess overall content quality for insights
         quality_assessment = None
@@ -1855,9 +2186,9 @@ class ContentAggregator:
                                f"scores range: {sorted_items[0].total_score if sorted_items else 0:.2f} - "
                                f"{sorted_items[-1].total_score if sorted_items else 0:.2f}")
             
-            # Apply enhanced selection with dynamic thresholds
+            # Apply enhanced selection with fixed threshold
             enhanced_selection = self._enhance_section_selection(
-                section, sorted_items, theme_analysis, dynamic_thresholds.get(section)
+                section, sorted_items, theme_analysis, fixed_threshold
             )
             
             # Log research papers selection result
@@ -1965,7 +2296,7 @@ class ContentAggregator:
             import asyncio
             
             # Generate embeddings for section items
-            item_texts = [f"{item.headline} {item.content[:300]}" for item in items]
+            item_texts = [f"{item.headline} {item.summary_text[:300]}" for item in items]
             
             # Create a new event loop for this operation if we're not in an async context
             try:
@@ -2056,7 +2387,7 @@ class ContentAggregator:
         
         for item in items:
             # Check if item contributes to oversaturated themes
-            item_text = f"{item.headline} {item.content[:200]}".lower()
+            item_text = f"{item.headline} {item.summary_text[:200]}".lower()
             contributes_to_oversaturation = any(
                 theme in item_text for theme in warned_themes
             )
@@ -2113,45 +2444,9 @@ class ContentAggregator:
         except Exception:
             return 5.0
 
-    async def _calculate_dynamic_quality_thresholds(self, all_sections: Dict[str, List[RankedItem]]) -> Dict[str, float]:
-        """
-        Calculate dynamic quality thresholds based on content availability and historical patterns.
-        
-        Args:
-            all_sections: All ranked items by section
-            
-        Returns:
-            Dict mapping section names to dynamic threshold values
-        """
-        thresholds = {}
-        base_threshold = self._normalized_threshold()
-        
-        # Get historical quality data if cache service is available
-        historical_context = {}
-        if self.cache_service:
-            try:
-                historical_context = await self._get_historical_quality_context()
-            except Exception as e:
-                self.logger.warning(f"Failed to get historical quality context: {e}")
-        
-        for section, items in all_sections.items():
-            if not items:
-                thresholds[section] = base_threshold
-                continue
-                
-            section_threshold = self._calculate_section_dynamic_threshold(
-                section, items, base_threshold, historical_context
-            )
-            thresholds[section] = section_threshold
-            
-        return thresholds
-
-    def _calculate_section_dynamic_threshold(self, section: str, items: List[RankedItem], 
-                                           base_threshold: float, historical_context: Dict) -> float:
-        """
-        Calculate dynamic threshold for a specific section.
-        """
-        if not items:
+    # REMOVED: _calculate_dynamic_quality_thresholds and _calculate_section_dynamic_threshold
+    # We now use a consistent fixed quality threshold of 4.0 for all sections
+    # This ensures consistent quality standards without compromising for content availability
             return base_threshold
             
         # Analyze current content quality distribution
@@ -2427,27 +2722,36 @@ class ContentAggregator:
         miami_items = []
         cornell_items = []
         
-        # Separate items by source (check both source name and URL)
+        # Separate items by location metadata (added during fetch)
         for item in items:
-            source_lower = item.source.lower() if item.source else ""
-            url_lower = item.url.lower() if item.url else ""
-            
+            # Check location metadata first (most reliable)
+            location = getattr(item, 'location', None)
+
             # Log item details for debugging
-            self.logger.debug(f"Local item: source='{item.source}', url='{item.url[:50]}...'")
-            
-            # Check for Miami sources (domain names and source names)
-            if ("miami" in source_lower or "miamiherald" in source_lower or 
-                "miamiherald.com" in url_lower):
+            self.logger.debug(f"Local item: location='{location}', source='{item.source}', url='{item.url[:50]}...'")
+
+            if location == "Miami":
                 miami_items.append(item)
-                self.logger.debug(f"  -> Identified as Miami Herald article")
-            # Check for Cornell sources (domain names and source names)
-            elif ("cornell" in source_lower or "news.cornell" in source_lower or 
-                  "cornellsun" in source_lower or "cornell.edu" in url_lower or
-                  "cornellsun.com" in url_lower):
+                self.logger.debug(f"  -> Identified as Miami article via location metadata")
+            elif location == "Cornell":
                 cornell_items.append(item)
-                self.logger.debug(f"  -> Identified as Cornell article")
+                self.logger.debug(f"  -> Identified as Cornell article via location metadata")
             else:
-                self.logger.debug(f"  -> Could not identify source (neither Miami nor Cornell)")
+                # Fallback to string matching if no metadata (backward compatibility)
+                source_lower = item.source.lower() if item.source else ""
+                url_lower = item.url.lower() if item.url else ""
+
+                if ("miami" in source_lower or "miamiherald" in source_lower or
+                    "miamiherald.com" in url_lower):
+                    miami_items.append(item)
+                    self.logger.debug(f"  -> Identified as Miami Herald article via string matching")
+                elif ("cornell" in source_lower or "news.cornell" in source_lower or
+                      "cornellsun" in source_lower or "cornell.edu" in url_lower or
+                      "cornellsun.com" in url_lower):
+                    cornell_items.append(item)
+                    self.logger.debug(f"  -> Identified as Cornell article via string matching")
+                else:
+                    self.logger.debug(f"  -> Could not identify source (neither Miami nor Cornell)")
         
         # Sort each group by score
         miami_items.sort(key=lambda r: r.total_score, reverse=True)
@@ -2588,7 +2892,7 @@ class ContentAggregator:
         critical_services = set()  # Empty set - no service is truly critical for newsletter delivery
         
         # Services that are important but not critical
-        important_services = {"llmlayer", "anthropic"}
+        important_services = {"llmlayer", "gemini"}
         
         # Check if this is a critical failure that should stop the pipeline
         if source == "aggregate":

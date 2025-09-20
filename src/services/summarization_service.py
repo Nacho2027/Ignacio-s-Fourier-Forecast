@@ -135,14 +135,14 @@ class SummarizationService:
         # Scripture section + USCCB source = preserve full text
         if item.section == Section.SCRIPTURE and item.source == "USCCB Daily Readings":
             # For USCCB readings, preserve the full original biblical text
-            summary_text = item.content
+            summary_text = item.summary_text
         else:
             # For Catholic Daily Reflections and other content, generate a summary
             prompt = self._get_editorial_prompt(voice, item.section)
             # Use AIService.generate_summary tool-calling for robust single-sentence output
             generated = await self.ai.generate_summary({
                 "headline": item.headline,
-                "content": item.content,
+                "content": item.summary_text,
                 "url": item.url,
                 "source": item.source,
                 "section": item.section,
@@ -347,7 +347,7 @@ class SummarizationService:
                 for item in all_items:
                     articles_data.append({
                         "headline": item.headline,
-                        "summary": item.content[:300] if item.content else "",  # Truncate for API limits
+                        "summary": item.summary_text[:300] if item.summary_text else "",  # Truncate for API limits
                         "source": item.source
                     })
                 

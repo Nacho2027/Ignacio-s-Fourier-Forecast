@@ -27,7 +27,13 @@
       "ft.com",
       "economist.com",
       "latimes.com",
-      "usatoday.com"
+      "usatoday.com",
+      "cnbc.com",
+      "fortune.com",
+      "marketwatch.com",
+      "barrons.com",
+      "forbes.com",
+      "tldr.tech"
     ]
   },
   "tier_3": {
@@ -42,7 +48,14 @@
       "vox.com",
       "slate.com",
       "salon.com",
-      "thedailybeast.com"
+      "thedailybeast.com",
+      "businessinsider.com",
+      "fool.com",
+      "seekingalpha.com",
+      "benzinga.com",
+      "thestreet.com",
+      "morningstar.com",
+      "investing.com"
     ]
   },
   "tier_4": {
@@ -56,7 +69,13 @@
       "engadget.com",
       "gizmodo.com",
       "mashable.com",
-      "venturebeat.com"
+      "venturebeat.com",
+      "zdnet.com",
+      "tomshardware.com",
+      "anandtech.com",
+      "technologyreview.com",
+      "spectrum.ieee.org",
+      "quantamagazine.org"
     ]
   },
   "tier_5": {
@@ -69,7 +88,12 @@
       "seattletimes.com",
       "miamiherald.com",
       "denverpost.com",
-      "startribune.com"
+      "startribune.com",
+      "news.cornell.edu",
+      "cornellsun.com",
+      "ithacajournal.com",
+      "miami.com",
+      "miaminewtimes.com"
     ]
   },
   "intellectual": {
@@ -80,16 +104,25 @@
       "newyorker.com",
       "harpers.org",
       "aeon.co",
-      "nautil.us",
+      "nautilus.us",
       "quantamagazine.org",
       "theparisreview.org",
+      "parisreview.org",
       "lrb.co.uk",
       "nybooks.com",
       "theconversation.com",
       "psyche.co",
       "worksinprogress.co",
       "knowablemagazine.org",
-      "publicdomainreview.org"
+      "publicdomainreview.org",
+      "lithub.com",
+      "thebaffler.com",
+      "nplusonemag.com",
+      "prospectmagazine.co.uk",
+      "longreads.com",
+      "jstor.org/daily",
+      "thepointmag.com",
+      "hedgehogreview.com"
     ]
   },
   "academic": {
@@ -131,7 +164,6 @@
       "worldtruth.tv",
       "yournewswire.com",
       "buzzfeed.com",
-      "businessinsider.com",
       "forbes.com/sites",
       "medium.com",
       "substack.com",

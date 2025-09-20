@@ -41,7 +41,7 @@ class ContentItem:
     id: str
     url: str
     headline: str
-    content: str
+    summary_text: str
     source: str
     section: str
     published_date: datetime
@@ -292,7 +292,7 @@ class DeduplicationService:
         new_item_dict = {
             "headline": item.headline,
             "source": item.source,
-            "content_preview": (item.content or "")[:500],
+            "content_preview": (item.summary_text or "")[:500],
             "published_date": item.published_date.isoformat() if item.published_date else None,
         }
         now_ts = datetime.now()
@@ -381,7 +381,7 @@ class DeduplicationService:
         to_embed: List[ContentItem] = [i for i in items if i.embedding is None]
         if not to_embed:
             return
-        texts = [f"{i.headline}\n\n{(i.content or '')[:500]}" for i in to_embed]
+        texts = [f"{i.headline}\n\n{(i.summary_text or '')[:500]}" for i in to_embed]
         vectors = await self.embeddings.batch_generate(texts)
         for itm, emb in zip(to_embed, vectors):
             itm.embedding = np.array(emb, dtype=np.float32)
@@ -446,7 +446,7 @@ class DeduplicationService:
         ]
         
         headline_lower = item.headline.lower()
-        content_lower = (item.content or "").lower()
+        content_lower = (item.summary_text or "").lower()
         
         # Check for major development indicators
         has_major_development = any(kw in headline_lower or kw in content_lower[:200] 
@@ -486,7 +486,7 @@ class DeduplicationService:
         significance = 0.0
         
         headline_lower = item.headline.lower()
-        content_lower = (item.content or "").lower()
+        content_lower = (item.summary_text or "").lower()
         
         # Source authority indicators
         high_authority_sources = [
@@ -618,7 +618,7 @@ class DeduplicationService:
         """
         Extract key topics from headline and content for clustering analysis.
         """
-        text = f"{item.headline} {(item.content or '')[:200]}".lower()
+        text = f"{item.headline} {(item.summary_text or '')[:200]}".lower()
         
         # Key topic indicators for clustering
         topic_patterns = {
@@ -738,7 +738,7 @@ class DeduplicationService:
             source=item.source,
             section=item.section,
             headline=item.headline,
-            content=item.content,
+            summary_text=item.summary_text,
             url=item.url,
             published_date=item.published_date,
             metadata=item.metadata or {},

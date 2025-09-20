@@ -37,7 +37,7 @@ class ArxivPaper:
             source="arXiv",
             section=section,
             headline=self.title,
-            content=self.abstract,
+            summary_text=self.abstract,
             url=self.pdf_url,
             published_date=self.published_date,
             metadata={
