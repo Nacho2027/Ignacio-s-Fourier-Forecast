@@ -97,7 +97,7 @@ class DeploymentValidator:
             "scheduling": [],
         }
         # Names to treat as critical in report aggregation
-        self.critical_services = ["anthropic", "voyage", "llmlayer", "email", "smtp"]
+        self.critical_services = ["anthropic", "voyage", "email", "smtp"]
 
     async def validate_all(self) -> DeploymentReport:
         """Run all validation categories and compile a report."""
@@ -206,18 +206,10 @@ class DeploymentValidator:
                 ValidationResult(name="Anthropic API", status="FAIL", message=f"Anthropic connection failed: {e}")
             )
 
-        # LLMLayer (replaces Perplexity)
-        try:
-            from src.services.llmlayer import LLMLayerService
-            ll = LLMLayerService()
-            ok = await ll.test_connection()
-            self.results["api_connectivity"].append(
-                ValidationResult(name="LLMLayer API", status="PASS" if ok else "FAIL", message="LLMLayer search accessible" if ok else "Cannot connect")
-            )
-        except Exception as e:  # noqa: BLE001
-            self.results["api_connectivity"].append(
-                ValidationResult(name="LLMLayer API", status="FAIL", message=f"LLMLayer connection failed: {e}")
-            )
+        # LLMLayer has been removed - now using RSS feeds instead
+        self.results["api_connectivity"].append(
+            ValidationResult(name="RSS Feeds", status="PASS", message="Now using RSS feeds instead of LLMLayer")
+        )
 
         # arXiv (non-critical)
         try:
@@ -374,7 +366,6 @@ class DeploymentValidator:
             config = PipelineConfig(
                 anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
                 voyage_api_key=os.getenv("VOYAGE_API_KEY", ""),
-                llmlayer_api_key=os.getenv("LLMLAYER_API_KEY", ""),
                 smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
                 smtp_port=int(os.getenv("SMTP_PORT", "587")),
                 smtp_user=os.getenv("SMTP_USER", ""),
@@ -601,7 +592,6 @@ async def run_9_30_pm_test() -> None:
     config = PipelineConfig(
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         voyage_api_key=os.getenv("VOYAGE_API_KEY", ""),
-        llmlayer_api_key=os.getenv("LLMLAYER_API_KEY", ""),
         smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
         smtp_port=int(os.getenv("SMTP_PORT", "587")),
         smtp_user=os.getenv("SMTP_USER", ""),

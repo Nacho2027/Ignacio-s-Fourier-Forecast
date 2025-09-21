@@ -76,7 +76,6 @@ class ErrorHandler:
 
     def __init__(self) -> None:
         self.service_criticality: Dict[str, ServiceType] = {
-            'llmlayer': ServiceType.CRITICAL,
             'anthropic': ServiceType.CRITICAL,
             'voyage': ServiceType.CRITICAL,
             'ai_service': ServiceType.CRITICAL,

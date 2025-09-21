@@ -40,7 +40,7 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 - Docker (optional, for containerized deployment)
 - Required API Keys:
   - **Anthropic** (Claude) - Core AI reasoning
-  - **LLMLayer** - Web search with citations
+  - **RSS Feeds** - News and content aggregation (no API key needed)
   - **Voyage AI** - Semantic embeddings
   - **Semantic Scholar** (optional, for higher academic paper limits) - Academic papers
   - **SMTP credentials** - Email delivery
@@ -101,10 +101,9 @@ fourier-forecast/
 │   │   └── email_compiler.py             # Generates final newsletter HTML/text
 │   ├── services/                         # External integrations & business logic
 │   │   ├── ai_service.py                 # Claude AI integration (ranking, summarization, etc.)
-│   │   ├── llmlayer.py                   # Premium web search with citations
+│   │   ├── rss.py                        # RSS feed aggregation for news & spiritual content
 │   │   ├── arxiv.py                      # arXiv academic paper fetching
 │   │   ├── semantic_scholar_service.py   # Peer-reviewed paper discovery (via direct API)
-│   │   ├── rss.py                        # RSS feed aggregation (including USCCB)
 │   │   ├── cache_service.py              # SQLite persistence & dedup tracking
 │   │   ├── deduplication_service.py      # 4-layer deduplication logic
 │   │   ├── summarization_service.py      # Section-specific summarization
@@ -232,7 +231,7 @@ Key configuration in `.env`:
 ```bash
 # AI Services
 ANTHROPIC_API_KEY=your_claude_api_key
-LLMLAYER_API_KEY=your_llmlayer_api_key
+# RSS feeds used instead of LLMLayer (no API key needed)
 VOYAGE_API_KEY=your_voyage_api_key
 SEMANTIC_SCHOLAR_API_KEY=optional_for_higher_limits
 
@@ -303,7 +302,7 @@ This project is powered by several excellent services and APIs:
 - **[Voyage AI](https://www.voyageai.com/)** - High-quality semantic embeddings for content similarity and deduplication
 
 ### Content Sources & Search
-- **[LLMLayer](https://llmlayer.com/)** - Premium web search with proper citations, powering news aggregation from AP, Reuters, WSJ, and more
+- **RSS Feeds** - Direct RSS feed aggregation from reputable news sources including BBC, Reuters, AP, Bloomberg, TechCrunch, and more
 - **[arXiv](https://arxiv.org/)** - Open access to scholarly articles in physics, mathematics, computer science, and more
 - **[Semantic Scholar](https://www.semanticscholar.org/)** - AI-powered research tool for scientific literature discovery
 
