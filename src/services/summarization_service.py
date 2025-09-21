@@ -296,11 +296,23 @@ class SummarizationService:
         # Align timezone awareness to avoid naive/aware subtraction errors
         now = datetime.now(published_date.tzinfo) if published_date.tzinfo is not None else datetime.now()
         delta: timedelta = now - published_date
+
+        # Handle negative time deltas (future dates due to timezone issues or bad RSS timestamps)
+        if delta.total_seconds() < 0:
+            self.logger.warning(f"Article appears to be from the future: {published_date} vs {now}")
+            return "just published"
+
+        # Handle very large time deltas (likely bad data)
+        if delta.days > 365:
+            self.logger.warning(f"Article appears to be very old: {delta.days} days ago")
+            return f"{delta.days} days ago"
+
         minutes = int(delta.total_seconds() // 60)
         hours = int(delta.total_seconds() // 3600)
         days = delta.days
+
         if minutes < 60:
-            return f"{minutes} minutes ago" if minutes != 0 else "just now"
+            return f"{minutes} minutes ago" if minutes > 0 else "just now"
         if hours < 24:
             return f"{hours} hours ago"
         if days == 1:
