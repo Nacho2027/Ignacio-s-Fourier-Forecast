@@ -101,6 +101,9 @@ class RSSService:
         self.timeout = 30  # seconds
         self.max_retries = 3
         self.logger = logging.getLogger(__name__)
+        
+        # Allow testing with limited feeds
+        self.max_feeds_per_section = int(os.getenv('MAX_FEEDS_PER_SECTION', '999'))
 
         # Load feed configurations from CSV and hardcoded configs
         self.feeds = self._load_all_feed_configs()
@@ -747,6 +750,11 @@ class RSSService:
         if not section_feeds:
             return []
         
+        # Limit feeds for testing if MAX_FEEDS_PER_SECTION is set
+        if hasattr(self, 'max_feeds_per_section') and self.max_feeds_per_section < len(section_feeds):
+            section_feeds = section_feeds[:self.max_feeds_per_section]
+            self.logger.info(f"Limited {section} to {self.max_feeds_per_section} feeds for testing")
+        
         all_items = []
         for feed_config in section_feeds:
             try:
@@ -1375,7 +1383,22 @@ class RSSServiceError(Exception):
 def create_rss_service():
     """Create RSS service using available dependencies."""
     if EXTERNAL_DEPS_AVAILABLE:
-        return RSSService()
+        # Try to use optimized RSS service
+        try:
+            from src.services.rss_optimized import OptimizedRSSService
+            service = OptimizedRSSService(
+                max_concurrent_feeds=12,
+                default_feed_timeout=8,
+                cache_ttl_seconds=1800  # 30 minutes
+            )
+            logging.info("✅ Created OptimizedRSSService successfully")
+            return service
+        except ImportError as e:
+            logging.info(f"Optimized RSS service not available: {e}, using standard RSS service")
+            return RSSService()
+        except Exception as e:
+            logging.error(f"Failed to create OptimizedRSSService: {e}, falling back to standard RSS service")
+            return RSSService()
     else:
         logging.warning("External dependencies not available, using simple RSS implementation")
         return SimpleRSSService()

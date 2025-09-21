@@ -726,10 +726,12 @@ class MainPipeline:
     def get_metrics(self) -> Optional[PipelineMetrics]:
         return self.metrics
 
-    async def health_check(self) -> Dict[str, bool]:
+    async def health_check(self) -> Dict[str, Any]:
         if not self.services:
             await self.initialize_services()
-        results: Dict[str, bool] = {}
+        results: Dict[str, Any] = {}
+        
+        # Test core services
         for name in ['ai', 'email']:
             svc = self.services.get(name)
             ok = False
@@ -739,6 +741,18 @@ class MainPipeline:
             except Exception:
                 ok = False
             results[name] = ok
+        
+        # Get RSS performance metrics if available
+        try:
+            rss_service = self.services.get('rss')
+            if rss_service and hasattr(rss_service, 'get_performance_report'):
+                rss_report = await rss_service.get_performance_report()
+                results['rss_performance'] = rss_report
+            else:
+                results['rss_performance'] = {"status": "basic_service", "optimized": False}
+        except Exception as e:
+            results['rss_performance'] = {"error": str(e), "optimized": False}
+            
         return results
 
 
@@ -852,7 +866,22 @@ async def main():
             health = await pipeline.health_check()
             print("Service Health Status:")
             for service, status in health.items():
-                print(f"  {service}: {'✅' if status else '❌'}")
+                if service == 'rss_performance':
+                    if isinstance(status, dict):
+                        if 'error' in status:
+                            print(f"  {service}: ❌ Error: {status['error']}")
+                        elif status.get('optimized', False):
+                            session_stats = status.get('session_stats', {})
+                            cache_hit_rate = session_stats.get('cache_hit_rate', 0)
+                            print(f"  {service}: ✅ Optimized (Cache: {cache_hit_rate:.1%})")
+                            print(f"    Feeds tracked: {status.get('total_feeds_tracked', 0)}")
+                            print(f"    Healthy feeds: {status.get('feed_health', {}).get('healthy', 0)}")
+                        else:
+                            print(f"  {service}: ⚠️  Basic service (not optimized)")
+                    else:
+                        print(f"  {service}: ❓ Unknown status")
+                else:
+                    print(f"  {service}: {'✅' if status else '❌'}")
             return
         elif args.test:
             print("Running test pipeline...")
