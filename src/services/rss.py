@@ -138,7 +138,7 @@ class RSSService:
     def _init_spiritual_feeds(self) -> Dict[str, FeedConfig]:
         """Initialize spiritual/scripture feed configurations (existing functionality)."""
         return {
-            # Spiritual Content (RSS-based)
+            # Scripture/Spiritual feeds
             "usccb_daily": FeedConfig(
                 name="USCCB Daily Readings",
                 url="https://bible.usccb.org/readings.rss",
@@ -156,81 +156,172 @@ class RSSService:
                 check_frequency_hours=24,
                 parse_full_content=True,
                 special_parser=None,
-                priority=9,
-                max_age_hours=48,
             ),
-            "vatican_news": FeedConfig(
-                name="Vatican News",
-                url="https://www.vaticannews.va/en/pope.rss",
-                section="scripture",
-                check_frequency_hours=12,
-                parse_full_content=False,
-                priority=8,
-                max_age_hours=72,
+
+            # Breaking News feeds
+            "bbc_news": FeedConfig(
+                name="BBC News",
+                url="https://feeds.bbci.co.uk/news/rss.xml",
+                section="breaking_news",
+                check_frequency_hours=1,
             ),
-            
-            # News & Current Affairs (RSS-based for high reliability)
+            "reuters_top": FeedConfig(
+                name="Reuters Top News",
+                url="https://www.reuters.com/rssFeed/topNews",
+                section="breaking_news",
+                check_frequency_hours=1,
+            ),
             "ap_news": FeedConfig(
-                name="Associated Press",
-                url="https://feeds.apnews.com/rss/apf-topnews",
+                name="AP News Top Headlines",
+                url="https://rsshub.app/apnews/topics/apf-topnews",
                 section="breaking_news",
                 check_frequency_hours=1,
-                parse_full_content=False,
             ),
-            "reuters_world": FeedConfig(
-                name="Reuters World News",
-                url="https://feeds.reuters.com/reuters/worldNews",
+            "guardian_world": FeedConfig(
+                name="Guardian World News",
+                url="https://www.theguardian.com/world/rss",
                 section="breaking_news",
                 check_frequency_hours=1,
-                parse_full_content=False,
+            ),
+            "npr_news": FeedConfig(
+                name="NPR News",
+                url="https://www.npr.org/rss/rss.php?id=1001",
+                section="breaking_news",
+                check_frequency_hours=1,
             ),
             
-            # Technology & Science (RSS-based)
-            "mit_tech_review": FeedConfig(
-                name="MIT Technology Review",
-                url="https://www.technologyreview.com/feed/",
-                section="tech_science",
-                check_frequency_hours=6,
-                parse_full_content=False,
+            # Business feeds
+            "bloomberg": FeedConfig(
+                name="Bloomberg",
+                url="https://www.bloomberg.com/rss",
+                section="business",
+                check_frequency_hours=2,
             ),
-            "ieee_spectrum": FeedConfig(
-                name="IEEE Spectrum",
-                url="https://spectrum.ieee.org/rss/fulltext",
-                section="tech_science", 
+            "ft": FeedConfig(
+                name="Financial Times",
+                url="https://www.ft.com/rss/home",
+                section="business",
+                check_frequency_hours=2,
+            ),
+            "wsj": FeedConfig(
+                name="Wall Street Journal",
+                url="https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+                section="business",
+                check_frequency_hours=2,
+            ),
+            "reuters_business": FeedConfig(
+                name="Reuters Business",
+                url="https://www.reuters.com/rssFeed/businessNews",
+                section="business",
+                check_frequency_hours=2,
+            ),
+            "hbr": FeedConfig(
+                name="Harvard Business Review",
+                url="https://hbr.org/feed",
+                section="business",
                 check_frequency_hours=6,
-                parse_full_content=False,
+            ),
+            
+            # Tech & Science feeds
+            "techcrunch": FeedConfig(
+                name="TechCrunch",
+                url="http://feeds.feedburner.com/TechCrunch/",
+                section="tech_science",
+                check_frequency_hours=2,
+            ),
+            "wired": FeedConfig(
+                name="Wired",
+                url="https://www.wired.com/feed/rss",
+                section="tech_science",
+                check_frequency_hours=2,
+            ),
+            "verge": FeedConfig(
+                name="The Verge",
+                url="https://www.theverge.com/rss/index.xml",
+                section="tech_science",
+                check_frequency_hours=2,
+            ),
+            "ars_technica": FeedConfig(
+                name="Ars Technica",
+                url="http://feeds.arstechnica.com/arstechnica/index/",
+                section="tech_science",
+                check_frequency_hours=2,
             ),
             "nature_news": FeedConfig(
                 name="Nature News",
                 url="https://www.nature.com/nature.rss",
                 section="tech_science",
-                check_frequency_hours=12,
-                parse_full_content=False,
+                check_frequency_hours=6,
+            ),
+            "mit_tech": FeedConfig(
+                name="MIT Technology Review",
+                url="https://www.technologyreview.com/feed/",
+                section="tech_science",
+                check_frequency_hours=6,
             ),
             
-            # Business & Finance (RSS-based)
-            "axios_business": FeedConfig(
-                name="Axios Business",
-                url="https://api.axios.com/feed/business",
-                section="business",
+            # Politics feeds
+            "politico": FeedConfig(
+                name="Politico",
+                url="https://www.politico.com/rss/politicopicks.xml",
+                section="politics",
                 check_frequency_hours=2,
-                parse_full_content=False,
+            ),
+            "the_hill": FeedConfig(
+                name="The Hill",
+                url="https://thehill.com/news/feed/",
+                section="politics",
+                check_frequency_hours=2,
+            ),
+            "foreign_affairs": FeedConfig(
+                name="Foreign Affairs",
+                url="https://www.foreignaffairs.com/rss.xml",
+                section="politics",
+                check_frequency_hours=6,
             ),
             
-            # Miscellaneous Intellectual Content (RSS-based)
+            # Miscellaneous feeds for Renaissance breadth
             "aeon": FeedConfig(
-                name="Aeon Essays",
+                name="Aeon",
                 url="https://aeon.co/feed.rss",
                 section="miscellaneous",
-                check_frequency_hours=12,
-                parse_full_content=False,
+                check_frequency_hours=6,
             ),
-            "the_atlantic": FeedConfig(
-                name="The Atlantic",
-                url="https://www.theatlantic.com/feed/all/",
+            "philosophy_now": FeedConfig(
+                name="Philosophy Now",
+                url="https://philosophynow.org/rss/articles.xml",
+                section="miscellaneous",
+                check_frequency_hours=12,
+            ),
+            "literary_hub": FeedConfig(
+                name="Literary Hub",
+                url="https://lithub.com/feed/",
                 section="miscellaneous",
                 check_frequency_hours=6,
-                parse_full_content=False,
+            ),
+            "smithsonian": FeedConfig(
+                name="Smithsonian Magazine",
+                url="https://www.smithsonianmag.com/rss/latest_articles/",
+                section="miscellaneous",
+                check_frequency_hours=6,
+            ),
+            "quanta": FeedConfig(
+                name="Quanta Magazine",
+                url="https://www.quantamagazine.org/feed/",
+                section="miscellaneous",
+                check_frequency_hours=6,
+            ),
+            "psychology_today": FeedConfig(
+                name="Psychology Today",
+                url="https://www.psychologytoday.com/us/blog/feed",
+                section="miscellaneous",
+                check_frequency_hours=6,
+            ),
+            "the_marginalian": FeedConfig(
+                name="The Marginalian",
+                url="https://www.themarginalian.org/feed/",
+                section="miscellaneous",
+                check_frequency_hours=12,
             ),
         }
         
@@ -651,103 +742,26 @@ class RSSService:
         return results
 
     async def fetch_feeds_by_section(self, section: str, max_items_per_feed: int = 10) -> List[RSSItem]:
-        """
-        Fetch RSS feeds for a specific section with intelligent content selection.
-        This replaces hardcoded keyword searches with curated RSS feeds.
-        """
-        section_feeds = [name for name, config in self.feeds.items() if config.section == section]
-        
+        """Fetch all RSS feeds for a specific section."""
+        section_feeds = [cfg for cfg in self.feeds.values() if cfg.section == section]
         if not section_feeds:
-            self.logger.warning(f"No RSS feeds configured for section: {section}")
             return []
-            
-        self.logger.info(f"Fetching {len(section_feeds)} RSS feeds for section: {section}")
         
-        all_items: List[RSSItem] = []
-        
-        # Fetch all feeds for this section in parallel
-        async def fetch_section_feed(feed_name: str) -> List[RSSItem]:
+        all_items = []
+        for feed_config in section_feeds:
             try:
-                config = self.feeds[feed_name]
-                items = await self.fetch_feed(config.url, max_items_per_feed)
-                # Mark items with their source feed for provenance
+                items = await self.fetch_feed(feed_config.url, max_items_per_feed)
+                # Update source_feed to be more descriptive
                 for item in items:
-                    item.source_feed = config.name
-                return items
+                    item.source_feed = feed_config.name
+                all_items.extend(items)
             except Exception as e:
-                self.logger.error(f"Failed to fetch RSS feed {feed_name}: {e}")
-                return []
-        
-        tasks = [fetch_section_feed(feed_name) for feed_name in section_feeds]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Collect all successful results
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                self.logger.error(f"RSS feed fetch failed for {section_feeds[i]}: {result}")
-            else:
-                all_items.extend(result)
-        
-        # Apply intelligent content filtering based on recency and quality
-        filtered_items = self._apply_intelligent_filtering(all_items, section)
-        
-        self.logger.info(f"Collected {len(all_items)} items from RSS, filtered to {len(filtered_items)} high-quality items for {section}")
-        return filtered_items
-    
-    def _apply_intelligent_filtering(self, items: List[RSSItem], section: str) -> List[RSSItem]:
-        """
-        Apply intelligent filtering to RSS items instead of relying on hardcoded keywords.
-        Uses publication date, content quality indicators, and section-specific criteria.
-        """
-        if not items:
-            return []
-        
-        # Filter by recency (last 7 days for most sections, 24 hours for breaking news)
-        from datetime import timedelta
-        now = datetime.now()
-        if section == "breaking_news":
-            cutoff = now - timedelta(hours=24)
-        elif section == "business":
-            cutoff = now - timedelta(days=3) 
-        elif section in ["tech_science", "miscellaneous"]:
-            cutoff = now - timedelta(days=7)
-        else:
-            cutoff = now - timedelta(days=14)  # Default for other sections
-            
-        recent_items = [item for item in items if item.published_date >= cutoff]
-        
-        # Quality filtering based on content characteristics
-        quality_items = []
-        for item in recent_items:
-            # Skip items that are too short (likely not substantial content)
-            description_length = len(item.description or "") + len(item.content or "")
-            if description_length < 100:  # Minimum content threshold
+                self.logger.warning(f"Failed to fetch {feed_config.name}: {e}")
                 continue
-                
-            # Skip items with common low-quality indicators
-            title_lower = item.title.lower()
-            if any(skip_phrase in title_lower for skip_phrase in [
-                "breaking:", "live updates", "live blog", "watch:", "photos:", 
-                "video:", "gallery:", "sponsored", "advertisement"
-            ]):
-                continue
-                
-            quality_items.append(item)
         
-        # Sort by publication date (most recent first) and limit
-        quality_items.sort(key=lambda x: x.published_date, reverse=True)
-        
-        # Return top items based on section requirements
-        section_limits = {
-            "breaking_news": 15,  # More items for filtering down to 3
-            "business": 12,       # More items for filtering down to 3  
-            "tech_science": 12,   # More items for filtering down to 3
-            "miscellaneous": 20,  # More items for filtering down to 5
-            "spiritual": 10       # Fewer needed for this section
-        }
-        
-        limit = section_limits.get(section, 15)
-        return quality_items[:limit]
+        # Sort by published date, newest first
+        all_items.sort(key=lambda x: x.published_date, reverse=True)
+        return all_items
 
     def parse_usccb_content(self, content: str) -> DailyReading:
         """Parse USCCB daily readings from HTML content."""

@@ -6,7 +6,6 @@ DOCKER.md
 TODO.md
 NOTES.md
 Future.md
-llmlayer.md
 Fourier.pem.pub
 *_internal.md
 *_private.md
@@ -226,7 +225,6 @@ test_*.db
 vibe-tools.config.json
 
 # Specific project files to ignore
-llmlayer_test_results_*.json
 validation_*.json
 
 # Docker override files (might contain local settings)

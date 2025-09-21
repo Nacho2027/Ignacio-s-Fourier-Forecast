@@ -117,7 +117,6 @@ class ContentAggregator:
         self,
         arxiv: ArxivService,
         rss: RSSService,
-        arxiv: ArxivService,
         ai: AIService,
         cache_service=None,
         embeddings=None,
@@ -126,7 +125,6 @@ class ContentAggregator:
     ) -> None:
         self.arxiv = arxiv
         self.rss = rss
-        self.arxiv = arxiv
         self.ai = ai
         self.cache_service = cache_service
         self.embeddings = embeddings
@@ -159,98 +157,6 @@ class ContentAggregator:
 
         self.logger = logging.getLogger(__name__)
         self._fetch_stats: List[FetchResult] = []
-
-    async def fetch_all_content_rss_first(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Fetch content prioritizing intelligent RSS feeds over hardcoded searches."""
-        tasks: List[asyncio.Task] = []
-
-        # Create tasks for RSS-first intelligent content fetching
-        async def fetch_rss_sections_with_timeout():
-            start = asyncio.get_event_loop().time()
-            try:
-                rss_results = await asyncio.wait_for(self._fetch_rss_sections(), timeout=self.fetch_timeout)
-                for r in rss_results:
-                    if isinstance(r, FetchResult):
-                        self._fetch_stats.append(r)
-                return rss_results
-            except asyncio.TimeoutError:
-                self.logger.error(f"RSS sections timed out after {self.fetch_timeout}s - falling back to LLMLayer")
-                # Fall back to original method if RSS fails
-                return await self._fetch_llmlayer_sections()
-            except Exception as e:
-                self.logger.error(f"RSS sections failed: {e} - falling back to LLMLayer")
-                # Fall back to original method if RSS fails
-                return await self._fetch_llmlayer_sections()
-
-        # Research papers (still using existing method)
-        async def fetch_research_with_timeout():
-            start = asyncio.get_event_loop().time() 
-            try:
-                result = await asyncio.wait_for(self._fetch_research_papers(), timeout=self.fetch_timeout)
-                if isinstance(result, FetchResult):
-                    self._fetch_stats.append(result)
-                return result
-            except asyncio.TimeoutError:
-                self.logger.warning(f"Research papers timed out after {self.fetch_timeout}s - continuing without them")
-                return FetchResult("research", Section.RESEARCH_PAPERS, [], self.fetch_timeout, error="Timeout")
-            except Exception as e:
-                self.logger.warning(f"Research papers failed: {e} - continuing without them")
-                return FetchResult("research", Section.RESEARCH_PAPERS, [], 0.0, error=str(e))
-
-        tasks.append(asyncio.create_task(fetch_rss_sections_with_timeout()))
-        tasks.append(asyncio.create_task(fetch_research_with_timeout()))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        sections: Dict[str, List[Dict[str, Any]]] = {}
-        for res in results:
-            if isinstance(res, Exception):
-                # Log the exception but continue processing other sections
-                self.logger.error(f"Exception in fetch result: {res}")
-                continue
-            if isinstance(res, list):
-                for fr in res:
-                    if isinstance(fr, FetchResult):
-                        sections.setdefault(fr.section, [])
-                        if fr.error is not None:
-                            # Include placeholder content for failed sections
-                            self.logger.warning(f"Section {fr.section} failed: {fr.error}")
-                            sections[fr.section].append({
-                                "headline": f"{fr.section.replace('_', ' ').title()} - Content Unavailable",
-                                "url": "#",
-                                "summary_text": f"We were unable to fetch {fr.section.replace('_', ' ')} at this time. Error: {fr.error}",
-                                "source": "System Notice",
-                                "published": datetime.now().isoformat(),
-                                "is_placeholder": True
-                            })
-                        else:
-                            # Items may be list or dict depending on section
-                            if isinstance(fr.items, list):
-                                sections[fr.section].extend(fr.items)
-                            else:
-                                sections[fr.section].append(fr.items)
-            elif isinstance(res, FetchResult):
-                sections.setdefault(res.section, [])
-                if res.error is not None:
-                    # Include placeholder content for failed sections
-                    self.logger.warning(f"Section {res.section} failed: {res.error}")
-                    sections[res.section].append({
-                        "headline": f"{res.section.replace('_', ' ').title()} - Content Unavailable",
-                        "url": "#",
-                        "summary_text": f"We were unable to fetch {res.section.replace('_', ' ')} at this time. Error: {res.error}",
-                        "source": "System Notice", 
-                        "published": datetime.now().isoformat(),
-                        "is_placeholder": True
-                    })
-                else:
-                    # Items may be list or dict depending on section
-                    if isinstance(res.items, list):
-                        sections[res.section].extend(res.items)
-                    else:
-                        sections[res.section].append(res.items)
-        
-        self.logger.info(f"RSS-first content aggregation completed: {len(sections)} sections fetched")
-        return sections
 
     async def fetch_all_content(self) -> Dict[str, List[Dict[str, Any]]]:
         """Fetch content from all sources in parallel using RSS feeds."""
@@ -413,7 +319,7 @@ class ContentAggregator:
             if isinstance(result, Exception):
                 self.logger.error(f"Section fetch failed with exception: {result}")
                 # Add a placeholder failure result
-                out.append(FetchResult("rss", Section.MISCELLANEOUS, [], 0.0, error=str(result)))
+                out.append(FetchResult("llmlayer", Section.MISCELLANEOUS, [], 0.0, error=str(result)))
             elif isinstance(result, FetchResult):
                 out.append(result)
             else:
@@ -431,158 +337,97 @@ class ContentAggregator:
                 return result
             else:
                 self.logger.error(f"✗ {name} returned invalid result type: {type(result)}")
-                return FetchResult("rss", section_enum, [], 0.0, error="Invalid result type")
+                return FetchResult("llmlayer", section_enum, [], 0.0, error="Invalid result type")
 
         except Exception as e:
             self.logger.error(f"✗ LLMLayer section '{name}' failed: {e}")
-            return FetchResult("rss", section_enum, [], 0.0, error=str(e))
-
-    async def _fetch_breaking_news_rss(self) -> FetchResult:
-        """Fetch breaking news from curated RSS feeds with intelligent AI ranking."""
-        start = asyncio.get_event_loop().time()
-        try:
-            self.logger.info("Breaking News: Fetching from curated RSS feeds")
-            
-            # Fetch from RSS feeds instead of hardcoded searches
-            rss_items = await self.rss.fetch_feeds_by_section("breaking_news")
-            
-            # Convert RSS items to the expected format
-            items = []
-            for rss_item in rss_items:
-                items.append({
-                    "id": rss_item.guid or f"rss_{rss_item.title[:20]}",
-                    "headline": rss_item.title,
-                    "url": rss_item.link,
-                    "summary_text": rss_item.content or rss_item.description,
-                    "source": rss_item.source_feed,
-                    "published": rss_item.published_date.isoformat() if rss_item.published_date else datetime.now().isoformat(),
-                })
-            
-            # Apply multi-stage pipeline for intelligent ranking and selection
-            ranked_items = self._apply_multi_stage_pipeline(items, Section.BREAKING_NEWS, max_age_days=1, min_items=3)
-            
-            self.logger.info(f"Breaking News: RSS feeds provided {len(rss_items)} items, selected {len(ranked_items)} after AI ranking")
-            return FetchResult("rss_intelligent", Section.BREAKING_NEWS, ranked_items, asyncio.get_event_loop().time() - start)
-            
-        except Exception as e:
-            self.logger.error(f"Breaking News RSS fetch failed: {e}")
-            return FetchResult("rss_intelligent", Section.BREAKING_NEWS, [], asyncio.get_event_loop().time() - start, error=str(e))
+            return FetchResult("llmlayer", section_enum, [], 0.0, error=str(e))
 
     async def _fetch_breaking_news(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            self.logger.info("Fetching breaking news using RSS feeds")
-            # Use RSS adapter for breaking news
-            result = await self.rss_adapter.search_optimized_rate_limited("breaking_news")
-            articles = result.articles
+            self.logger.info("Fetching breaking news using adaptive search with intelligent fallback")
+            from datetime import datetime
+            today = datetime.now().strftime("%B %d, %Y")
+
+            # Use adaptive search manager for intelligent fallback
+            base_query = f"breaking news today {today} latest urgent stories headlines important developments"
+            articles, search_results = await self.adaptive_search.search_with_fallback(
+                section=Section.BREAKING_NEWS,
+                base_query=base_query,
+                target_count=3
+            )
+
+            # Log search performance
+            search_summary = self.adaptive_search.get_search_summary(search_results)
+            self.logger.info(f"Breaking news adaptive search: {search_summary['total_articles_found']} articles from {search_summary['strategies_used']} strategies")
 
             # Apply filtering and ranking pipeline
             items = self._apply_multi_stage_pipeline(articles, Section.BREAKING_NEWS, max_age_days=2, min_items=3)
             self.logger.info(f"Breaking news: {len(items)} items after multi-stage pipeline from {len(articles)} raw articles")
 
             return FetchResult(
-                source="rss",
+                source="adaptive_search",
                 section=Section.BREAKING_NEWS,
                 items=items,
                 fetch_time=asyncio.get_event_loop().time() - start,
             )
         except Exception as e:
             # Breaking news is critical; return error result
-            self.logger.error(f"Breaking news RSS search failed: {e}")
-            return await self._handle_fetch_failure("rss", e)
-
-    async def _fetch_business_news_rss(self) -> FetchResult:
-        """Fetch business news from curated RSS feeds with intelligent AI ranking."""
-        start = asyncio.get_event_loop().time()
-        try:
-            self.logger.info("Business: Fetching from curated RSS feeds")
-            
-            # Fetch from RSS feeds instead of hardcoded searches
-            rss_items = await self.rss.fetch_feeds_by_section("business")
-            
-            # Convert RSS items to the expected format
-            items = []
-            for rss_item in rss_items:
-                items.append({
-                    "id": rss_item.guid or f"rss_{rss_item.title[:20]}",
-                    "headline": rss_item.title,
-                    "url": rss_item.link,
-                    "summary_text": rss_item.content or rss_item.description,
-                    "source": rss_item.source_feed,
-                    "published": rss_item.published_date.isoformat() if rss_item.published_date else datetime.now().isoformat(),
-                })
-            
-            # Apply multi-stage pipeline for intelligent ranking and selection
-            ranked_items = self._apply_multi_stage_pipeline(items, Section.BUSINESS, max_age_days=3, min_items=3)
-            
-            self.logger.info(f"Business: RSS feeds provided {len(rss_items)} items, selected {len(ranked_items)} after AI ranking")
-            return FetchResult("rss_intelligent", Section.BUSINESS, ranked_items, asyncio.get_event_loop().time() - start)
-            
-        except Exception as e:
-            self.logger.error(f"Business RSS fetch failed: {e}")
-            return FetchResult("rss_intelligent", Section.BUSINESS, [], asyncio.get_event_loop().time() - start, error=str(e))
+            self.logger.error(f"Breaking news adaptive search failed: {e}")
+            return await self._handle_fetch_failure("adaptive_search", e)
 
     async def _fetch_business_news(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            self.logger.info("Fetching business news using RSS feeds")
-            # Use RSS adapter for business news
-            result = await self.rss_adapter.search_optimized_rate_limited("business")
-            articles = result.articles
+            self.logger.info("Fetching business news using adaptive search with intelligent fallback")
+            from datetime import datetime
+            today = datetime.now().strftime("%B %d, %Y")
+
+            # Use adaptive search manager for intelligent fallback
+            base_query = f"business market news {today} stocks economy earnings deals IPO Federal Reserve"
+            articles, search_results = await self.adaptive_search.search_with_fallback(
+                section=Section.BUSINESS,
+                base_query=base_query,
+                target_count=3
+            )
+
+            # Log search performance
+            search_summary = self.adaptive_search.get_search_summary(search_results)
+            self.logger.info(f"Business adaptive search: {search_summary['total_articles_found']} articles from {search_summary['strategies_used']} strategies")
 
             # Apply filtering and ranking pipeline
             items = self._apply_multi_stage_pipeline(articles, Section.BUSINESS, max_age_days=3, min_items=3)
             self.logger.info(f"Business: {len(items)} items after multi-stage pipeline from {len(articles)} raw articles")
 
             return FetchResult(
-                source="rss",
+                source="adaptive_search",
                 section=Section.BUSINESS,
                 items=items,
                 fetch_time=asyncio.get_event_loop().time() - start,
             )
         except Exception as e:
-            self.logger.error(f"Business RSS search failed: {e}")
-            return await self._handle_fetch_failure("rss", e)
-
-    async def _fetch_tech_science_rss(self) -> FetchResult:
-        """Fetch tech & science content from curated RSS feeds with intelligent AI ranking."""
-        start = asyncio.get_event_loop().time()
-        try:
-            self.logger.info("Tech/Science: Fetching from curated RSS feeds")
-            
-            # Fetch from RSS feeds instead of hardcoded searches  
-            rss_items = await self.rss.fetch_feeds_by_section("tech_science")
-            
-            # Convert RSS items to the expected format
-            items = []
-            for rss_item in rss_items:
-                items.append({
-                    "id": rss_item.guid or f"rss_{rss_item.title[:20]}",
-                    "headline": rss_item.title,
-                    "url": rss_item.link,
-                    "summary_text": rss_item.content or rss_item.description,
-                    "source": rss_item.source_feed,
-                    "published": rss_item.published_date.isoformat() if rss_item.published_date else datetime.now().isoformat(),
-                })
-            
-            # Apply multi-stage pipeline for intelligent ranking and selection
-            ranked_items = self._apply_multi_stage_pipeline(items, Section.TECH_SCIENCE, max_age_days=7, min_items=3)
-            
-            self.logger.info(f"Tech/Science: RSS feeds provided {len(rss_items)} items, selected {len(ranked_items)} after AI ranking")
-            return FetchResult("rss_intelligent", Section.TECH_SCIENCE, ranked_items, asyncio.get_event_loop().time() - start)
-            
-        except Exception as e:
-            self.logger.error(f"Tech/Science RSS fetch failed: {e}")
-            return FetchResult("rss_intelligent", Section.TECH_SCIENCE, [], asyncio.get_event_loop().time() - start, error=str(e))
+            self.logger.error(f"Business adaptive search failed: {e}")
+            return await self._handle_fetch_failure("adaptive_search", e)
 
     async def _fetch_tech_science(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # Use RSS feeds for tech/science content (replaces llmlayer)
-            self.logger.info("Fetching tech/science using RSS feeds")
-            result = await self.rss_adapter.search_optimized_rate_limited("tech_science")
-            self.logger.info("Tech/Science: Got %d articles from RSS feeds", len(result.articles))
-            items_raw = result.articles
+            # VISION.txt specifies: TLDR newsletter, MIT Tech Review, IEEE Spectrum, Quanta Magazine
+            self.logger.info("Fetching tech/science using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("tech_science")
+            self.logger.info("Tech/Science: Got %d citations from MIT/IEEE/Quanta", len(result.citations))
+            items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                }
+                for c in result.citations
+            ]
             # Validate sources - allow any tech news source
             items_validated = self._validate_sources(
                 items_raw,
@@ -593,39 +438,61 @@ class ContentAggregator:
             items = self._apply_multi_stage_pipeline(items_validated, Section.TECH_SCIENCE, max_age_days=14, min_items=3)
             self.logger.info("Tech/Science: %d items after multi-stage pipeline from %d raw", len(items), len(items_raw))
 
-            # FALLBACK: If we got nothing, try more RSS feeds with lower quality threshold
+            # FALLBACK: If we got nothing, try a broader search
             if len(items) == 0:
-                self.logger.warning("Tech/Science: No items from preferred sources, trying fallback RSS search")
-                # Update RSS adapter config for more lenient search
-                fallback_config = {
-                    "target_count": 20,
-                    "max_feeds": 10,
-                    "hours_back": 336,  # 2 weeks
-                    "quality_threshold": 0.3  # Lower threshold
-                }
-                self.rss_adapter.update_section_config("tech_science", fallback_config)
-                
-                fallback_result = await self.rss_adapter.search_with_fallback("tech_science", "technology science", 20)
-                
-                # Apply source ranking to fallback items
+                self.logger.warning("Tech/Science: No items from preferred sources, trying broader search")
+                fallback_result = await self.llmlayer.search(
+                    query=(
+                        f"breakthrough technology science AI quantum computing {today} "
+                        f"artificial intelligence machine learning robotics space exploration "
+                        f"climate technology biotech CRISPR research innovation discovery"
+                    ),
+                    max_results=20,
+                    # Remove strict domain filter for fallback
+                    recency="week",
+                    search_type="general"
+                )
+
+                fallback_items = [
+                    {
+                        "headline": c.title,
+                        "url": c.url,
+                        "summary_text": c.snippet,
+                        "source": c.source_name,
+                        "published": (c.published_date.isoformat() if c.published_date else None),
+                    }
+                    for c in fallback_result.citations
+                ]
+
+                # Apply source ranking instead of strict filtering
                 if self.source_ranking_service:
-                    fallback_result.articles = self.source_ranking_service.process_and_rank(fallback_result.articles, "technology")
+                    fallback_items = self.source_ranking_service.process_and_rank(fallback_items, "technology")
 
                 # Take top 3 items
-                items = fallback_result.articles[:3] if fallback_result.articles else []
+                items = fallback_items[:3] if fallback_items else []
                 self.logger.info(f"Tech/Science fallback: Retrieved {len(items)} items")
 
-            return FetchResult("rss", Section.TECH_SCIENCE, items, asyncio.get_event_loop().time() - start)
+            return FetchResult("llmlayer", Section.TECH_SCIENCE, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
 
     async def _fetch_startup_insights(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # Use RSS feeds for startup insights
-            self.logger.info("Fetching startup insights using RSS feeds")
-            result = await self.rss_adapter.search_optimized_rate_limited("startup")
-            items_raw = result.articles
+            # Use tier-based validation: fetch broadly and let tier system filter
+            self.logger.info("Fetching startup insights using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("startup")
+            items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                }
+                for c in result.citations
+            ]
             # Use tier-based source validation (no hardcoded domains)
             items_validated = self._validate_sources(
                 items_raw,
@@ -634,19 +501,30 @@ class ContentAggregator:
             )
             # Use multi-stage pipeline for better quality control and to ensure we get 3 items
             items = self._apply_multi_stage_pipeline(items_validated, Section.STARTUP, max_age_days=14, min_items=2)
-            return FetchResult("rss", Section.STARTUP, items, asyncio.get_event_loop().time() - start)
+            return FetchResult("llmlayer", Section.STARTUP, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             return await self._handle_fetch_failure("llmlayer", e)
 
     async def _fetch_politics(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
         try:
-            # Use RSS feeds for US politics
-            self.logger.info("Fetching US politics using RSS feeds")
-            result = await self.rss_adapter.search_optimized_rate_limited("politics")
+            # VISION.txt allows: Associated Press and other nonpartisan sources, US politics only
+            self.logger.info("Fetching US politics using optimized LLMLayer configuration")
+            # Use the new optimized search method with comprehensive configuration
+            result = await self.llmlayer.search_optimized_rate_limited("politics")
             
-            self.logger.info(f"Politics: Got {len(result.articles)} articles from RSS feeds")
-            items_raw = result.articles
+            self.logger.info(f"Politics: Got {len(result.citations)} citations from initial search")
+            
+            items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,  # This now contains full article content (up to 5000 chars) after fetch
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                }
+                for c in result.citations
+            ]
             
             # Validate sources BEFORE other filtering - expanded trusted sources list
             trusted_sources = [
@@ -661,20 +539,31 @@ class ContentAggregator:
             # If we still have too few items, try a fallback search
             if len(items) < 3:
                 self.logger.warning(f"Politics: Only {len(items)} items found, trying fallback search")
-                # Update config for fallback with more lenient settings
-                fallback_config = {
-                    "target_count": 20,
-                    "max_feeds": 8,
-                    "hours_back": 168,  # 1 week 
-                    "quality_threshold": 0.3  # Lower threshold
-                }
-                self.rss_adapter.update_section_config("politics", fallback_config)
+                fallback_result = await self.llmlayer.search(
+                    query=(
+                        f"US Congress Senate House Representatives Supreme Court President Biden {today} yesterday "
+                        f"legislation vote decision ruling policy federal government politics"
+                    ),
+                    max_results=20,
+                    domains=trusted_sources,
+                    recency="week",  # Expand to week for fallback
+                    search_type="news"
+                )
                 
-                fallback_result = await self.rss_adapter.search_with_fallback("politics", "US politics government", 20)
+                fallback_items_raw = [
+                    {
+                        "headline": c.title,
+                        "url": c.url,
+                        "summary_text": c.snippet,
+                        "source": c.source_name,
+                        "published": (c.published_date.isoformat() if c.published_date else None),
+                    }
+                    for c in fallback_result.citations
+                ]
                 
                 # Deduplicate by URL
                 existing_urls = {item["url"] for item in items}
-                for fallback_item in fallback_result.articles:
+                for fallback_item in fallback_items_raw:
                     if fallback_item["url"] not in existing_urls:
                         items_raw.append(fallback_item)
                         existing_urls.add(fallback_item["url"])
@@ -685,10 +574,10 @@ class ContentAggregator:
                 items = self._apply_multi_stage_pipeline(items_validated, Section.POLITICS, max_age_days=3, min_items=2)
                 self.logger.info(f"Politics: After fallback, {len(items)} final items from {len(items_raw)} total")
             
-            return FetchResult("rss", Section.POLITICS, items, asyncio.get_event_loop().time() - start)
+            return FetchResult("llmlayer", Section.POLITICS, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
             # Non-critical; return error result
-            return FetchResult("rss", Section.POLITICS, [], asyncio.get_event_loop().time() - start, error=str(e))
+            return FetchResult("llmlayer", Section.POLITICS, [], asyncio.get_event_loop().time() - start, error=str(e))
 
     async def _fetch_local_news(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
@@ -698,37 +587,52 @@ class ContentAggregator:
             from datetime import datetime
             this_week = datetime.now().strftime("%B %d, %Y")
             
-            # For local news, we'll try to use RSS feeds but this section may need manual RSS configuration
-            self.logger.info("Local news: RSS-based local news not yet fully implemented, returning empty results")
-            miami_result = RSSAdapterResult(
-                query="Miami news",
-                articles=[],
-                search_time_ms=0,
-                total_results=0
+            # Fetch Miami news
+            miami_result = await self.llmlayer.search(
+                query=f"What are the latest local news stories from Miami Herald about Miami, Florida from this week of {this_week}?",
+                max_results=5,  # Get 5 Miami articles
+                domains=["miamiherald.com"],
+                recency="week",
+                search_type="news"
             )
-            cornell_result = RSSAdapterResult(
-                query="Cornell news", 
-                articles=[],
-                search_time_ms=0,
-                total_results=0
+            
+            # Fetch Cornell news - increase limit and broaden query
+            cornell_result = await self.llmlayer.search(
+                query=f"What are the latest news stories from Cornell University about campus developments, research, student life, faculty achievements, or community events from the past two weeks?",
+                max_results=10,  # Get 10 Cornell articles for better selection
+                domains=["news.cornell.edu", "cornellsun.com", "cornell.edu", "as.cornell.edu", "engineering.cornell.edu"],
+                recency="month",  # Use month to ensure we get enough Cornell content
+                search_type="news"
             )
             
             # Log what we got from each source
-            self.logger.info(f"Local: Got {len(miami_result.articles)} Miami Herald articles")
-            self.logger.info(f"Local: Got {len(cornell_result.articles)} Cornell articles")
+            self.logger.info(f"Local: Got {len(miami_result.citations)} Miami Herald articles")
+            self.logger.info(f"Local: Got {len(cornell_result.citations)} Cornell articles")
 
             # Process Miami and Cornell separately to ensure 1+1 geographic balance
-            miami_items_raw = []
-            for article in miami_result.articles:
-                item = article.copy()
-                item["location"] = "Miami"
-                miami_items_raw.append(item)
+            miami_items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                    "location": "Miami"  # Add location tag for tracking
+                }
+                for c in miami_result.citations
+            ]
 
-            cornell_items_raw = []
-            for article in cornell_result.articles:
-                item = article.copy()
-                item["location"] = "Cornell"
-                cornell_items_raw.append(item)
+            cornell_items_raw = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                    "location": "Cornell"  # Add location tag for tracking
+                }
+                for c in cornell_result.citations
+            ]
 
             # Validate sources for each location separately - use generic "local" section
             miami_validated = self._validate_sources(miami_items_raw, ["miamiherald.com"], "local")
@@ -754,22 +658,28 @@ class ContentAggregator:
             total_raw = len(miami_validated) + len(cornell_validated)
             self.logger.info("Local: %d items after multi-stage pipeline from %d raw (%d Miami + %d Cornell)",
                            len(items), total_raw, len(miami_validated), len(cornell_validated))
-            return FetchResult("rss", Section.LOCAL, items, asyncio.get_event_loop().time() - start)
+            return FetchResult("llmlayer", Section.LOCAL, items, asyncio.get_event_loop().time() - start)
         except Exception as e:  # noqa: BLE001
-            return FetchResult("rss", Section.LOCAL, [], asyncio.get_event_loop().time() - start, error=str(e))
+            return FetchResult("llmlayer", Section.LOCAL, [], asyncio.get_event_loop().time() - start, error=str(e))
 
     async def _fetch_miscellaneous_search(self, search_name: str, custom_query: Optional[str] = None) -> List[Dict[str, Any]]:
         """Optimized method for miscellaneous searches using new configuration."""
         try:
-            self.logger.info(f"Miscellaneous/{search_name}: Starting RSS search")
-            # Use RSS adapter for miscellaneous content with custom query
-            result = await self.rss_adapter.search_optimized_rate_limited("miscellaneous", custom_query)
+            self.logger.info(f"Miscellaneous/{search_name}: Starting optimized search")
+            # Use the optimized search method with optional custom query
+            result = await self.llmlayer.search_optimized_rate_limited("miscellaneous", custom_query)
 
-            items = []
-            for article in result.articles:
-                item = article.copy()
-                item["search_category"] = search_name  # Track which search found this
-                items.append(item)
+            items = [
+                {
+                    "headline": c.title,
+                    "url": c.url,
+                    "summary_text": c.snippet,
+                    "source": c.source_name,
+                    "published": (c.published_date.isoformat() if c.published_date else None),
+                    "search_category": search_name  # Track which search found this
+                }
+                for c in result.citations
+            ]
 
             self.logger.info(f"Miscellaneous/{search_name}: Found {len(items)} items")
             return items
@@ -777,37 +687,6 @@ class ContentAggregator:
         except Exception as e:
             self.logger.error(f"Miscellaneous/{search_name} search failed: {e}")
             return []
-
-    async def _fetch_miscellaneous_rss(self) -> FetchResult:
-        """Fetch miscellaneous intellectual content from curated RSS feeds with intelligent AI ranking."""
-        start = asyncio.get_event_loop().time()
-        try:
-            self.logger.info("Miscellaneous: Fetching from curated RSS feeds")
-            
-            # Fetch from RSS feeds instead of hardcoded searches  
-            rss_items = await self.rss.fetch_feeds_by_section("miscellaneous")
-            
-            # Convert RSS items to the expected format
-            items = []
-            for rss_item in rss_items:
-                items.append({
-                    "id": rss_item.guid or f"rss_{rss_item.title[:20]}",
-                    "headline": rss_item.title,
-                    "url": rss_item.link,
-                    "summary_text": rss_item.content or rss_item.description,
-                    "source": rss_item.source_feed,
-                    "published": rss_item.published_date.isoformat() if rss_item.published_date else datetime.now().isoformat(),
-                })
-            
-            # Apply multi-stage pipeline for intelligent ranking and selection
-            ranked_items = self._apply_multi_stage_pipeline(items, Section.MISCELLANEOUS, max_age_days=7, min_items=5)
-            
-            self.logger.info(f"Miscellaneous: RSS feeds provided {len(rss_items)} items, selected {len(ranked_items)} after AI ranking")
-            return FetchResult("rss_intelligent", Section.MISCELLANEOUS, ranked_items, asyncio.get_event_loop().time() - start)
-            
-        except Exception as e:
-            self.logger.error(f"Miscellaneous RSS fetch failed: {e}")
-            return FetchResult("rss_intelligent", Section.MISCELLANEOUS, [], asyncio.get_event_loop().time() - start, error=str(e))
 
     async def _fetch_miscellaneous(self) -> FetchResult:
         start = asyncio.get_event_loop().time()
@@ -909,11 +788,11 @@ class ContentAggregator:
             if len(items) < 5:
                 self.logger.warning(f"Miscellaneous: Only got {len(items)} items from 5 optimized parallel searches with {len(items_raw)} raw items")
 
-            return FetchResult("rss", Section.MISCELLANEOUS, items, asyncio.get_event_loop().time() - start)
+            return FetchResult("llmlayer", Section.MISCELLANEOUS, items, asyncio.get_event_loop().time() - start)
             
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Miscellaneous: Error during fetch: {e}", exc_info=True)
-            return FetchResult("rss", Section.MISCELLANEOUS, [], asyncio.get_event_loop().time() - start, error=str(e))
+            return FetchResult("llmlayer", Section.MISCELLANEOUS, [], asyncio.get_event_loop().time() - start, error=str(e))
 
     def _expand_scripture_reference(self, reference: str) -> str:
         """Expand scripture abbreviations to full book names."""

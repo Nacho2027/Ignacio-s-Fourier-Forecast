@@ -39,7 +39,8 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 - Python 3.11 or higher
 - Docker (optional, for containerized deployment)
 - Required API Keys:
-  - **Google Gemini** - Core AI reasoning and content analysis
+  - **Anthropic** (Claude) - Core AI reasoning and content analysis
+  - **RSS Feeds** - News and content aggregation (no API key needed)
   - **Voyage AI** - Semantic embeddings for intelligent deduplication
   - **Semantic Scholar** (optional, for higher academic paper limits) - Academic papers
   - **LLMLayer** (optional, for enhanced web search with citations) - Premium news sources
@@ -100,9 +101,8 @@ fourier-forecast/
 │   │   ├── content_aggregator.py         # Fetches & ranks content from all sources
 │   │   └── email_compiler.py             # Generates final newsletter HTML/text
 │   ├── services/                         # External integrations & business logic
-│   │   ├── ai_service.py                 # Gemini AI integration (ranking, summarization, etc.)
-│   │   ├── rss.py                        # Intelligent RSS feed aggregation (including USCCB)
-│   │   ├── llmlayer.py                   # Optional premium web search with citations
+│   │   ├── ai_service.py                 # Claude AI integration (ranking, summarization, etc.)
+│   │   ├── rss.py                        # RSS feed aggregation for news & spiritual content
 │   │   ├── arxiv.py                      # arXiv academic paper fetching
 │   │   ├── semantic_scholar_service.py   # Peer-reviewed paper discovery (via direct API)
 │   │   ├── cache_service.py              # SQLite persistence & dedup tracking
@@ -231,7 +231,8 @@ Key configuration in `.env`:
 
 ```bash
 # AI Services
-GEMINI_API_KEY=your_gemini_api_key
+ANTHROPIC_API_KEY=your_claude_api_key
+# RSS feeds used instead of LLMLayer (no API key needed)
 VOYAGE_API_KEY=your_voyage_api_key
 SEMANTIC_SCHOLAR_API_KEY=optional_for_higher_limits
 LLMLAYER_API_KEY=optional_for_enhanced_search
@@ -299,12 +300,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is powered by several excellent services and APIs:
 
 ### AI & Language Models
-- **[Google Gemini](https://deepmind.google/technologies/gemini/)** - Advanced AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
+- **[Anthropic Claude](https://www.anthropic.com/)** - Advanced AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
 - **[Voyage AI](https://www.voyageai.com/)** - High-quality semantic embeddings for content similarity and deduplication
 
-### Content Sources & Discovery
-- **Intelligent RSS Feed Curation** - Curated RSS feeds from premium sources with AI-powered content selection
-- **[LLMLayer](https://llmlayer.com/)** (Optional) - Enhanced web search with proper citations for additional content discovery
+### Content Sources & Search
+- **RSS Feeds** - Direct RSS feed aggregation from reputable news sources including BBC, Reuters, AP, Bloomberg, TechCrunch, and more
 - **[arXiv](https://arxiv.org/)** - Open access to scholarly articles in physics, mathematics, computer science, and more
 - **[Semantic Scholar](https://www.semanticscholar.org/)** - AI-powered research tool for scientific literature discovery
 
