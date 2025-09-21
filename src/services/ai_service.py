@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 
 @dataclass
@@ -61,7 +62,7 @@ class AIService:
             raise ValueError("Gemini API key required. Set GEMINI_API_KEY or pass api_key parameter.")
 
         # Configure Gemini client
-        genai.configure(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
         
         # Prompts
         self.prompts_path = prompts_path or "config/prompts_v2.yaml"
@@ -103,10 +104,10 @@ class AIService:
         """Ping the API to validate connectivity and key."""
         try:
             self.logger.info("🔍 Testing AI service connection...")
-            model = genai.GenerativeModel("gemini-2.5-pro")
-            response = await model.generate_content_async(
-                "ping",
-                generation_config=genai.GenerationConfig(max_output_tokens=1000)
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents="ping",
+                config=types.GenerateContentConfig(max_output_tokens=100)
             )
             self.logger.info(f"✅ AI service test response: {response.text if response.text else 'No content'}")
             return bool(response.text)
@@ -782,78 +783,81 @@ Standard: Meaningful impact on community life.""",
         
         return section_prompts.get(section, "")
 
-    def _convert_json_schema_to_gemini_schema(self, json_schema: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_json_schema_to_gemini_schema(self, json_schema: Dict[str, Any]) -> types.Schema:
         """
-        Convert a JSON Schema to Gemini's Schema format.
-        
-        Long-term robust implementation that returns plain dictionaries
-        compatible with Google GenerativeAI library expectations.
+        Convert a JSON Schema to Gemini's Schema format using new SDK types.
+
+        Returns a types.Schema object compatible with the new Google GenAI library.
         """
-        # Type mapping from JSON Schema to Gemini type strings
+        # Type mapping from JSON Schema to Gemini type enums
         type_mapping = {
-            'string': 'string',
-            'number': 'number', 
-            'integer': 'integer',
-            'boolean': 'boolean',
-            'array': 'array',
-            'object': 'object',
+            'string': types.Type.STRING,
+            'number': types.Type.NUMBER,
+            'integer': types.Type.INTEGER,
+            'boolean': types.Type.BOOLEAN,
+            'array': types.Type.ARRAY,
+            'object': types.Type.OBJECT,
         }
 
-        def convert_type_string(schema_type):
-            """Convert JSON Schema type to Gemini type string."""
+        def convert_type_enum(schema_type):
+            """Convert JSON Schema type to Gemini type enum."""
             if isinstance(schema_type, list):
                 # Handle union types like ['string', 'null'] - use the primary (non-null) type
                 primary_types = [t for t in schema_type if t != 'null']
                 if primary_types:
-                    return type_mapping.get(primary_types[0], 'string')
+                    return type_mapping.get(primary_types[0], types.Type.STRING)
                 else:
-                    return 'string'  # Default fallback
+                    return types.Type.STRING  # Default fallback
             else:
-                return type_mapping.get(schema_type, 'string')
+                return type_mapping.get(schema_type, types.Type.STRING)
 
         def convert_schema_recursive(schema):
-            """Recursively convert schema structure."""
+            """Recursively convert schema structure to types.Schema."""
             if not isinstance(schema, dict):
                 return schema
 
-            result = {}
+            schema_params = {}
 
-            # Convert type to string
+            # Convert type to enum
             if 'type' in schema:
-                result['type'] = convert_type_string(schema['type'])
+                schema_params['type'] = convert_type_enum(schema['type'])
 
             # Copy safe fields
-            safe_fields = ['description', 'required', 'enum']
-            for field in safe_fields:
-                if field in schema:
-                    result[field] = schema[field]
+            if 'description' in schema:
+                schema_params['description'] = schema['description']
+            if 'enum' in schema:
+                schema_params['enum'] = schema['enum']
 
             # Handle properties for objects
             if 'properties' in schema:
                 converted_properties = {}
                 for prop_name, prop_schema in schema['properties'].items():
                     converted_properties[prop_name] = convert_schema_recursive(prop_schema)
-                result['properties'] = converted_properties
+                schema_params['properties'] = converted_properties
+
+            # Handle required fields
+            if 'required' in schema:
+                schema_params['required'] = schema['required']
 
             # Handle array items
             if 'items' in schema:
-                result['items'] = convert_schema_recursive(schema['items'])
+                schema_params['items'] = convert_schema_recursive(schema['items'])
 
-            return result
+            return types.Schema(**schema_params)
 
         try:
             # Convert the schema using the recursive converter
             converted = convert_schema_recursive(json_schema)
             return converted
-            
+
         except Exception as e:
             # Robust fallback: create a minimal schema that always works
             self.logger.warning(f"Schema conversion failed, using minimal fallback: {e}")
-            return {
-                'type': 'object',
-                'description': 'Function parameters',
-                'properties': {}
-            }
+            return types.Schema(
+                type=types.Type.OBJECT,
+                description='Function parameters',
+                properties={}
+            )
 
     async def _call_gemini(
         self,
@@ -879,16 +883,14 @@ Standard: Meaningful impact on community life.""",
                     # Gemini expects contents as strings or objects
                     contents.append(msg["content"])
 
-            # Build the configuration
-            config = genai.GenerationConfig(
-                max_output_tokens=max_tokens,
-                temperature=0.3  # Default temperature, can be made configurable
-                # Note: Gemini 2.5 Pro requires thinking mode - let it use default settings
-            )
+            # Build the configuration using new SDK types
+            config_params = {
+                "max_output_tokens": max_tokens,
+                "temperature": 0.3,  # Default temperature, can be made configurable
+            }
 
-            # Add system instruction if present
             if system_instruction:
-                config.system_instruction = system_instruction
+                config_params["system_instruction"] = system_instruction
 
             # Convert tools to Gemini format
             gemini_tools = None
@@ -897,7 +899,7 @@ Standard: Meaningful impact on community life.""",
                 for tool in tools:
                     if tool.get("type") == "custom":
                         # Convert custom tool to Gemini function declaration format using proper types
-                        function_declaration = genai.types.FunctionDeclaration(
+                        function_declaration = types.FunctionDeclaration(
                             name=tool["name"],
                             description=tool["description"],
                             parameters=self._convert_json_schema_to_gemini_schema(tool["input_schema"])
@@ -906,27 +908,26 @@ Standard: Meaningful impact on community life.""",
 
                 if function_declarations:
                     # Create Tool with function declarations
-                    gemini_tools = [genai.types.Tool(function_declarations=function_declarations)]
+                    gemini_tools = [types.Tool(function_declarations=function_declarations)]
+                    config_params["tools"] = gemini_tools
 
                     # Handle tool choice (function calling mode)
                     if tool_choice and tool_choice.get("type") == "tool":
                         # Force function calling - use tool_config
-                        config.tool_config = genai.protos.ToolConfig(
-                            function_calling_config=genai.protos.FunctionCallingConfig(
+                        config_params["tool_config"] = types.ToolConfig(
+                            function_calling_config=types.FunctionCallingConfig(
                                 mode="ANY",
                                 allowed_function_names=[tool_choice.get("name")]
                             )
                         )
 
-            # Call the Gemini API (async)
-            model = genai.GenerativeModel(
-                model_name=self.model,
-                system_instruction=system_instruction
-            )
-            response = await model.generate_content_async(
-                contents,
-                generation_config=config,
-                tools=gemini_tools
+            config = types.GenerateContentConfig(**config_params)
+
+            # Call the Gemini API (async) using new client pattern
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=config
             )
 
             # Convert response to format expected by our code
@@ -942,14 +943,86 @@ Standard: Meaningful impact on community life.""",
                 "stop_reason": "stop",  # Default stop reason
             }
 
-            # Handle content and function calls
+            # Handle content and function calls using new SDK response format
             tool_calls = []
             text_content = ""
 
-            if response.candidates and len(response.candidates) > 0:
-                candidate = response.candidates[0]
+            # Check for function calls using the correct new SDK pattern
+            # Handle both response.function_calls formats: FunctionCall objects vs wrapped objects
+            if hasattr(response, 'function_calls') and response.function_calls:
+                for function_call_part in response.function_calls:
+                    try:
+                        # Check if this is a direct FunctionCall object or a wrapper
+                        if hasattr(function_call_part, 'function_call'):
+                            # Wrapper format: response.function_calls[0].function_call.args
+                            function_call = function_call_part.function_call
+                            function_name = function_call_part.name
+                        else:
+                            # Direct FunctionCall format: response.function_calls[0].args
+                            function_call = function_call_part
+                            function_name = function_call_part.name
 
-                # Safely check for content and parts
+                        # Extract arguments using the correct pattern from Context7 docs
+                        if hasattr(function_call, 'args') and function_call.args:
+                            # Convert protobuf struct to dictionary
+                            args_dict = dict(function_call.args)
+                            arguments_json = json.dumps(args_dict)
+                        else:
+                            arguments_json = "{}"
+
+                        tool_calls.append({
+                            "type": "custom",
+                            "function": {
+                                "name": function_name,
+                                "arguments": arguments_json,
+                            }
+                        })
+
+                        self.logger.debug(f"Successfully parsed function call: {function_name} with args: {arguments_json}")
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to parse function call: {e}")
+                        # Log the structure for debugging
+                        self.logger.debug(f"Function call part type: {type(function_call_part)}")
+                        self.logger.debug(f"Function call part attributes: {dir(function_call_part)[:10]}...")  # Truncate long list
+
+            # Fallback: Check for function calls in candidates (alternative format)
+            if not tool_calls and response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if (hasattr(candidate, 'content') and
+                    candidate.content and
+                    hasattr(candidate.content, 'parts') and
+                    candidate.content.parts):
+
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'function_call') and part.function_call:
+                            try:
+                                func_call = part.function_call
+                                # Try to extract arguments from part-level function call
+                                if hasattr(func_call, 'args') and func_call.args:
+                                    args_dict = dict(func_call.args)
+                                    arguments_json = json.dumps(args_dict)
+                                else:
+                                    arguments_json = "{}"
+
+                                tool_calls.append({
+                                    "type": "custom",
+                                    "function": {
+                                        "name": func_call.name if hasattr(func_call, 'name') else 'unknown_function',
+                                        "arguments": arguments_json,
+                                    }
+                                })
+
+                                self.logger.debug(f"Parsed function call from candidate part: {func_call.name}")
+
+                            except Exception as e:
+                                self.logger.error(f"Failed to parse function call from candidate part: {e}")
+
+            # Check for text content
+            if hasattr(response, 'text') and response.text:
+                text_content = response.text
+            elif response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
                 if (hasattr(candidate, 'content') and
                     candidate.content and
                     hasattr(candidate.content, 'parts') and
@@ -958,19 +1031,7 @@ Standard: Meaningful impact on community life.""",
                     for part in candidate.content.parts:
                         if hasattr(part, 'text') and part.text:
                             text_content = part.text
-                        elif hasattr(part, 'function_call') and part.function_call:
-                            # Convert Gemini function call to our format
-                            tool_calls.append({
-                                "type": "custom",
-                                "function": {
-                                    "name": part.function_call.name,
-                                    "arguments": json.dumps(dict(part.function_call.args)) if part.function_call.args else "{}",
-                                }
-                            })
-
-            # Try response.text as fallback if no content from candidates
-            if not text_content and hasattr(response, 'text') and response.text:
-                text_content = response.text
+                            break
 
             # Add tool calls if present
             if tool_calls:
