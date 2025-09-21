@@ -20,9 +20,9 @@ from src.services.cache_service import CacheService
 from src.services.cache_service import ContentItem as CacheContentItem
 from src.utils.embeddings import EmbeddingService
 from src.services.ai_service import AIService
-from src.services.llmlayer import LLMLayerService
+# RSS-based content aggregation system
 from src.services.arxiv import ArxivService
-from src.services.rss import RSSService
+from src.services.rss import create_rss_service, create_rss_adapter
 from src.services.email_service import EmailService, EmailConfig
 from src.services.deduplication_service import (
     DeduplicationService,
@@ -43,7 +43,7 @@ class PipelineConfig:
     # API Keys
     anthropic_api_key: str  # For Claude AI service
     voyage_api_key: str  # For Voyage AI embeddings service
-    llmlayer_api_key: str
+    # RSS system requires no API keys
 
     # Email settings
     smtp_host: str
@@ -147,7 +147,7 @@ class MainPipeline:
         return PipelineConfig(
             anthropic_api_key=os.getenv('ANTHROPIC_API_KEY', ''),
             voyage_api_key=os.getenv('VOYAGE_API_KEY', ''),
-            llmlayer_api_key=os.getenv('LLMLAYER_API_KEY', ''),
+            # RSS system configuration loaded automatically
             smtp_host=os.getenv('SMTP_HOST', 'smtp.gmail.com'),
             smtp_port=int(os.getenv('SMTP_PORT', '587')),
             smtp_user=os.getenv('SMTP_USER', ''),
@@ -193,8 +193,7 @@ class MainPipeline:
             raise PipelineError("Missing ANTHROPIC_API_KEY")
         if not cfg.voyage_api_key:
             raise PipelineError("Missing VOYAGE_API_KEY (required for embeddings)")
-        if not cfg.llmlayer_api_key:
-            raise PipelineError("Missing LLMLAYER_API_KEY")
+        # RSS system requires no API keys
         if not cfg.smtp_user or not cfg.smtp_password:
             raise PipelineError("Missing SMTP credentials")
 
@@ -206,9 +205,9 @@ class MainPipeline:
             pass
 
         ai = AIService(api_key=cfg.anthropic_api_key)
-        llmlayer = LLMLayerService(api_key=cfg.llmlayer_api_key)
+        # RSS-based content aggregation
         arxiv = ArxivService()
-        rss = RSSService()
+        rss = create_rss_service()
         # Initialize Semantic Scholar service (optional API key for higher rate limits)
         semantic_scholar = SemanticScholarService(api_key=os.getenv('SEMANTIC_SCHOLAR_API_KEY'))
         # Construct EmailService with explicit config to avoid env dependency in tests
@@ -225,7 +224,7 @@ class MainPipeline:
         email = EmailService(email_cfg)
         embeddings = EmbeddingService(api_key=cfg.voyage_api_key)
 
-        aggregator = ContentAggregator(llmlayer, arxiv, rss, ai, cache, embeddings, semantic_scholar)
+        aggregator = ContentAggregator(rss, arxiv, ai, cache, embeddings, semantic_scholar)
         dedup = DeduplicationService(cache, embeddings, ai)
         summarization = SummarizationService(ai)
         synthesis = SynthesisService(ai)
@@ -235,7 +234,7 @@ class MainPipeline:
             'cache': cache,
             'embeddings': embeddings,
             'ai': ai,
-            'llmlayer': llmlayer,
+            # RSS feeds integrated into aggregator
             'arxiv': arxiv,
             'rss': rss,
             'semantic_scholar': semantic_scholar,
@@ -737,7 +736,7 @@ class MainPipeline:
         if not self.services:
             await self.initialize_services()
         results: Dict[str, bool] = {}
-        for name in ['ai', 'llmlayer', 'email']:
+        for name in ['ai', 'email']:  # Core services health check
             svc = self.services.get(name)
             ok = False
             try:
@@ -834,7 +833,7 @@ async def main():
     config = PipelineConfig(
         anthropic_api_key=os.getenv('ANTHROPIC_API_KEY', ''),
         voyage_api_key=os.getenv('VOYAGE_API_KEY', ''),
-        llmlayer_api_key=os.getenv('LLMLAYER_API_KEY', ''),
+        # RSS system configuration
         smtp_host=os.getenv('SMTP_HOST', 'smtp.gmail.com'),
         smtp_port=int(os.getenv('SMTP_PORT', '587')),
         smtp_user=os.getenv('SMTP_USER', ''),
