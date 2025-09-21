@@ -1,0 +1,202 @@
+Section,Source,RSS Feed URL,Description
+Breaking News,BBC News,https://feeds.bbci.co.uk/news/rss.xml,Global breaking news coverage
+Breaking News,Reuters Top News,https://www.reuters.com/rssFeed/topNews,International breaking news
+Breaking News,AP News Top Headlines,https://rsshub.app/apnews/topics/apf-topnews,Associated Press breaking news
+Breaking News,NBC News,https://feeds.nbcnews.com/nbcnews/public/news,US breaking news
+Breaking News,CNN World,http://rss.cnn.com/rss/edition_world.rss,CNN international news
+Breaking News,Guardian World News,https://www.theguardian.com/world/rss,UK-based global news
+Breaking News,NPR News,https://www.npr.org/rss/rss.php?id=1001,US public radio news
+Breaking News,Al Jazeera,https://www.aljazeera.com/xml/rss/all.xml,Middle East perspective on global news
+Breaking News,Deutsche Welle,https://rss.dw.com/rdf/rss-en-all,German international broadcaster
+Breaking News,France 24,https://www.france24.com/en/rss,French international news
+Business,Bloomberg,https://www.bloomberg.com/rss,Global business and financial news
+Business,Financial Times,https://www.ft.com/rss/home,UK business and economic news
+Business,Wall Street Journal,https://feeds.a.dj.com/rss/RSSWorldNews.xml,US business news
+Business,Reuters Business,https://www.reuters.com/rssFeed/businessNews,International business news
+Business,CNBC,https://www.cnbc.com/id/100003114/device/rss/rss.html,US business and markets
+Business,MarketWatch,https://www.marketwatch.com/rss/topstories,Market and business news
+Business,Yahoo Finance,https://finance.yahoo.com/news/rssindex,Financial news and analysis
+Business,Forbes,https://www.forbes.com/business/feed/,Business and entrepreneurship
+Business,Harvard Business Review,https://hbr.org/feed,Business strategy and management
+Business,The Economist,https://www.economist.com/latest/rss.xml,Global business and economics
+Business,Business Insider,https://www.businessinsider.com/rss,Business news and analysis
+Business,Seeking Alpha,https://seekingalpha.com/feed.xml,Investment and market analysis
+Tech & Science,TechCrunch,http://feeds.feedburner.com/TechCrunch/,Startup and tech industry news
+Tech & Science,Wired,https://www.wired.com/feed/rss,Technology and science news
+Tech & Science,The Verge,https://www.theverge.com/rss/index.xml,"Tech, science, and culture"
+Tech & Science,Ars Technica,http://feeds.arstechnica.com/arstechnica/index/,Technology analysis and news
+Tech & Science,VentureBeat,https://venturebeat.com/feed/,Tech industry and AI news
+Tech & Science,ScienceDaily,https://www.sciencedaily.com/rss/all.xml,Science research news
+Tech & Science,Nature News,https://www.nature.com/nature.rss,Scientific research and news
+Tech & Science,MIT Technology Review,https://www.technologyreview.com/feed/,Emerging technology analysis
+Tech & Science,IEEE Spectrum,https://spectrum.ieee.org/rss/fulltext,Engineering and technology
+Tech & Science,Engadget,https://www.engadget.com/rss.xml,Consumer technology news
+Tech & Science,ZDNet,https://www.zdnet.com/news/rss.xml,Business technology news
+Tech & Science,TechRepublic,https://www.techrepublic.com/rssfeeds/articles/,IT professional news
+Research Papers,arXiv Computer Science,https://rss.arxiv.org/rss/cs,Recent computer science papers
+Research Papers,arXiv Physics,https://rss.arxiv.org/rss/physics,Recent physics papers
+Research Papers,arXiv Mathematics,https://rss.arxiv.org/rss/math,Recent mathematics papers
+Research Papers,arXiv AI/ML,https://rss.arxiv.org/rss/cs.AI+cs.LG,AI and machine learning papers
+Research Papers,arXiv Quantitative Biology,https://rss.arxiv.org/rss/q-bio,Biology and life sciences papers
+Research Papers,Nature Research,https://www.nature.com/nature/research-articles.rss,Nature research articles
+Research Papers,Science Magazine,https://science.sciencemag.org/rss/current.xml,Science journal articles
+Research Papers,PLOS ONE,https://journals.plos.org/plosone/feed/atom,Open access research
+Research Papers,Nature Communications,https://www.nature.com/ncomms.rss,Multidisciplinary research
+Research Papers,Cell Press,https://www.cell.com/action/showFeed?type=etoc&feed=rss&jc=cell,Cell biology research
+Research Papers,PNAS,https://www.pnas.org/rss/current.xml,Proceedings of National Academy of Sciences
+Research Papers,arXiv Economics,https://rss.arxiv.org/rss/econ,Economics research papers
+Politics,Politico,https://www.politico.com/rss/politicopicks.xml,US political news
+Politics,The Hill,https://thehill.com/news/feed/,US politics and policy
+Politics,Washington Post Politics,https://feeds.washingtonpost.com/rss/politics,US political coverage
+Politics,New York Times Politics,https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml,Political news and analysis
+Politics,Foreign Affairs,https://www.foreignaffairs.com/rss.xml,International relations and policy
+Politics,Foreign Policy,https://foreignpolicy.com/feed/,Global politics and analysis
+Politics,The Atlantic Politics,https://feeds.feedburner.com/TheAtlanticPoliticsChannel,Political commentary
+Politics,Congressional Quarterly,https://plus.cq.com/rss/feed.rss,Congressional and legislative news
+Politics,Roll Call,https://www.rollcall.com/rss/,Capitol Hill news
+Politics,International Crisis Group,https://www.crisisgroup.org/crisiswatch/rss.xml,Global conflict analysis
+Miscellaneous,Dezeen,https://www.dezeen.com/feed/,Contemporary architecture and design news
+Miscellaneous,Architectural Digest,https://www.architecturaldigest.com/feed/rss,Architecture and luxury design
+Miscellaneous,designboom,https://www.designboom.com/feeds/all/,"Architecture, design, and art news"
+Miscellaneous,ArchDaily,https://www.archdaily.com/feed/,Architecture news and projects
+Miscellaneous,Core77,https://www.core77.com/rss/object.xml,Industrial design and innovation
+Miscellaneous,Inhabitat,https://inhabitat.com/feed/,Green design and sustainable architecture
+Miscellaneous,Wallpaper*,https://www.wallpaper.com/rss,"Design, fashion, and lifestyle"
+Miscellaneous,Fast Company Design,https://www.fastcompany.com/design/rss,Design and innovation
+Miscellaneous,IGNANT,https://www.ignant.com/feed/,"Art, architecture, and design"
+Miscellaneous,Curbed,https://www.curbed.com/rss/index.xml,"Cities, architecture, and design"
+Miscellaneous,This is Colossal,https://thisiscolossal.com/feed/,Contemporary art and visual culture
+Miscellaneous,ARTnews,https://www.artnews.com/feed/,Art news and market updates
+Miscellaneous,Artforum,https://www.artforum.com/rss.xml,Contemporary art criticism
+Miscellaneous,Hyperallergic,https://hyperallergic.com/feed/,Art criticism and news
+Miscellaneous,The Art Newspaper,https://www.theartnewspaper.com/rss,International art news
+Miscellaneous,Booooooom,https://www.booooooom.com/feed/,Contemporary art and culture
+Miscellaneous,Contemporary Art Daily,https://stacks.contemporaryartlibrary.org/feed,Exhibition documentation
+Miscellaneous,Street Art News,https://streetartnews.net/feed/,Urban and street art
+Miscellaneous,MoMA Magazine,https://www.moma.org/magazine/feed/,Museum of Modern Art content
+Miscellaneous,Guggenheim Magazine,https://www.guggenheim.org/feed/,Guggenheim museum content
+Miscellaneous,Tate,https://www.tate.org.uk/rss/all-content.xml,Tate museum content
+Miscellaneous,British Museum Blog,https://blog.britishmuseum.org/feed/,Museum insights and collections
+Miscellaneous,Artsy Editorial,https://www.artsy.net/rss/news,Art market and criticism
+Miscellaneous,Frieze,https://www.frieze.com/rss.xml,Contemporary art magazine
+Miscellaneous,Art in America,https://www.artnews.com/c/art-in-america/rss/,American art criticism
+Miscellaneous,Vogue,https://www.vogue.com/feed/rss,"Fashion, beauty, and culture"
+Miscellaneous,Elle,https://www.elle.com/rss/all.xml,Fashion and lifestyle
+Miscellaneous,Harper's Bazaar,https://www.harpersbazaar.com/rss/,Fashion and culture
+Miscellaneous,WWD,https://wwd.com/feed/,Fashion business news
+Miscellaneous,Business of Fashion,https://www.businessoffashion.com/feed/,Fashion industry analysis
+Miscellaneous,The Cut,https://www.thecut.com/rss/,Fashion and culture commentary
+Miscellaneous,Fashionista,https://fashionista.com/feed,Fashion industry news
+Miscellaneous,i-D,https://i-d.vice.com/en/rss,Fashion and youth culture
+Miscellaneous,Highsnobiety,https://www.highsnobiety.com/rss/,Streetwear and culture
+Miscellaneous,Hypebeast,https://hypebeast.com/rss,Streetwear and lifestyle
+Miscellaneous,Bon Appétit,https://www.bonappetit.com/feed/rss,Food and cooking
+Miscellaneous,Food & Wine,https://www.foodandwine.com/rss,Culinary culture and recipes
+Miscellaneous,Eater,https://www.eater.com/rss/index.xml,Food culture and restaurant news
+Miscellaneous,Serious Eats,https://www.seriouseats.com/rss,Food science and cooking
+Miscellaneous,Saveur,https://www.saveur.com/rss/,Food culture and travel
+Miscellaneous,The Kitchn,https://www.thekitchn.com/main.rss,Home cooking and food culture
+Miscellaneous,Gastro Obscura,https://www.atlasobscura.com/feeds/gastro,Food history and culture
+Miscellaneous,Lucky Peach,https://feeds.feedburner.com/LuckyPeach,Food culture magazine
+Miscellaneous,Taste,https://www.taste.com.au/rss/,Food and cooking
+Miscellaneous,First We Feast,https://firstwefeast.com/rss.xml,Food and pop culture
+Miscellaneous,Lonely Planet,https://www.lonelyplanet.com/blog.rss,Travel guides and culture
+Miscellaneous,Conde Nast Traveler,https://www.cntraveler.com/feed/rss,Luxury travel and culture
+Miscellaneous,Travel + Leisure,https://www.travelandleisure.com/rss,Travel and lifestyle
+Miscellaneous,Atlas Obscura,https://www.atlasobscura.com/feeds/latest,Hidden places and culture
+Miscellaneous,Culture Trip,https://theculturetrip.com/feed/,Travel and local culture
+Miscellaneous,Roads & Kingdoms,https://roadsandkingdoms.com/feed/,"Travel, food, and culture"
+Miscellaneous,Afar,https://www.afar.com/rss/magazine.xml,Travel and cultural immersion
+Miscellaneous,National Geographic Travel,https://www.nationalgeographic.com/travel/rss,Adventure and culture travel
+Miscellaneous,The Points Guy,https://thepointsguy.com/feed/,Travel tips and rewards
+Miscellaneous,Nomadic Matt,https://www.nomadicmatt.com/feed/,Budget travel advice
+Miscellaneous,Philosophy Now,https://philosophynow.org/rss/articles.xml,Contemporary philosophy
+Miscellaneous,Aeon,https://aeon.co/feed.rss,"Philosophy, science, and society"
+Miscellaneous,The Philosophers' Magazine,https://www.philosophersmag.com/rss.xml,Philosophy for general readers
+Miscellaneous,Daily Nous,https://dailynous.com/feed/,Philosophy profession news
+Miscellaneous,3:16 AM Magazine,https://www.3-16am.co.uk/feed/,Philosophy interviews and essays
+Miscellaneous,The Stone - NYTimes,https://feeds.nytimes.com/nyt/rss/Blogs/TheStone,Philosophy column
+Miscellaneous,Stanford Encyclopedia of Philosophy,https://plato.stanford.edu/rss/sep.xml,Authoritative philosophical scholarship
+Miscellaneous,Philosophy Talk,https://www.philosophytalk.org/rss.xml,Philosophy radio show
+Miscellaneous,Literary Hub,https://lithub.com/feed/,Literary culture and criticism
+Miscellaneous,The Paris Review,https://www.theparisreview.org/blog/feed/,Literature and writing
+Miscellaneous,London Review of Books,https://www.lrb.co.uk/rss,Literary criticism
+Miscellaneous,The New York Review of Books,https://www.nybooks.com/feed/,Intellectual commentary
+Miscellaneous,The Rumpus,https://therumpus.net/feed/,Literature and culture
+Miscellaneous,Electric Literature,https://electricliterature.com/feed/,Contemporary literature
+Miscellaneous,Book Riot,https://bookriot.com/feed/,Books and reading culture
+Miscellaneous,Publishers Weekly,https://www.publishersweekly.com/rss,Publishing industry news
+Miscellaneous,Granta,https://granta.com/feed/,Literary magazine
+Miscellaneous,The Believer,https://believermag.com/feed/,Literature and culture
+Miscellaneous,Psychology Today,https://www.psychologytoday.com/us/blog/feed,Psychology insights
+Miscellaneous,Scientific American Mind,https://www.scientificamerican.com/rss/blogs/mind/,Psychology and neuroscience
+Miscellaneous,Psych Central,https://psychcentral.com/feed/,Mental health and psychology
+Miscellaneous,The British Psychological Society,https://www.bps.org.uk/news/rss.xml,Psychology research
+Miscellaneous,Greater Good Magazine,https://greatergood.berkeley.edu/feeds/rss/,Psychology of well-being
+Miscellaneous,American Psychological Association,https://www.apa.org/news/rss/index.xml,Psychology research and news
+Miscellaneous,Psyche,https://psyche.co/feed,Psychology and philosophy of mind
+Miscellaneous,Harvard Health,https://www.health.harvard.edu/blog/feed,Health and medicine
+Miscellaneous,Mayo Clinic,https://newsnetwork.mayoclinic.org/feed/,Medical news and health
+Miscellaneous,Healthline,https://www.healthline.com/rss,Health information
+Miscellaneous,Medical News Today,https://www.medicalnewstoday.com/rss,Medical research news
+Miscellaneous,Well+Good,https://www.wellandgood.com/feed/,Wellness and lifestyle
+Miscellaneous,Goop,https://goop.com/feed/,Wellness and lifestyle
+Miscellaneous,Mind Body Green,https://www.mindbodygreen.com/rss.xml,Holistic wellness
+Miscellaneous,Smithsonian Magazine,https://www.smithsonianmag.com/rss/latest_articles/,History and culture
+Miscellaneous,History Today,https://www.historytoday.com/rss.xml,Historical scholarship
+Miscellaneous,The History Blog,https://www.thehistoryblog.com/feed,Archaeological discoveries
+Miscellaneous,Ancient Origins,https://www.ancient-origins.net/rss.xml,Ancient history and archaeology
+Miscellaneous,Archaeology Magazine,https://www.archaeology.org/rss/news,Archaeological discoveries
+Miscellaneous,Lapham's Quarterly,https://www.laphamsquarterly.org/rss.xml,History and literature
+Miscellaneous,History Extra,https://www.historyextra.com/rss/,Popular history
+Miscellaneous,Quanta Magazine,https://www.quantamagazine.org/feed/,Science and mathematics
+Miscellaneous,Nautilus,https://nautil.us/rss/all/,"Science, philosophy, and culture"
+Miscellaneous,Popular Science,https://www.popsci.com/rss.xml,Popular science
+Miscellaneous,Science Friday,https://www.sciencefriday.com/rss/,Science radio and podcast
+Miscellaneous,New Scientist,https://www.newscientist.com/feed/home,Science news and analysis
+Miscellaneous,Live Science,https://www.livescience.com/feeds/all,Science news
+Miscellaneous,Anthropology News,https://www.anthropology-news.org/feed/,Anthropological research
+Miscellaneous,Contexts,https://contexts.org/feed/,Sociology for general audiences
+Miscellaneous,Social Science Space,https://www.socialsciencespace.com/feed/,Social science research
+Miscellaneous,Cultural Anthropology,https://journal.culanth.org/index.php/ca/gateway/plugin/WebFeedGatewayPlugin/rss,Anthropology journal
+Miscellaneous,Yale Environment 360,https://e360.yale.edu/rss.xml,Environmental journalism
+Miscellaneous,The Guardian Environment,https://www.theguardian.com/environment/rss,Environmental news
+Miscellaneous,Grist,https://grist.org/feed/,Environmental news and solutions
+Miscellaneous,Outside Magazine,https://www.outsideonline.com/rss/full/,Outdoor culture and environment
+Miscellaneous,Tree Hugger,https://www.treehugger.com/rss,Environmental lifestyle
+Miscellaneous,Fast Company Innovation,https://www.fastcompany.com/innovation/rss,Innovation and creativity
+Miscellaneous,IDEO,https://www.ideo.com/feed,Design thinking and innovation
+Miscellaneous,Creative Review,https://www.creativereview.co.uk/feed/,Creative industries
+Miscellaneous,It's Nice That,https://www.itsnicethat.com/feed,Creative inspiration
+Miscellaneous,The Conversation,https://theconversation.com/articles.atom,Academic insights
+Miscellaneous,Edge,https://www.edge.org/feed,Science and intellectual culture
+Miscellaneous,The Marginalian,https://www.themarginalian.org/feed/,"Literature, philosophy, science"
+Miscellaneous,Cabinet Magazine,https://www.cabinetmagazine.org/rss.php,Arts and culture
+Miscellaneous,n+1,https://www.nplusonemag.com/feed/,"Literature, politics, and culture"
+Miscellaneous,Public Books,https://www.publicbooks.org/feed/,Humanities and culture
+Miscellaneous,The Point Magazine,https://thepointmag.com/feed/,"Politics, philosophy, and the arts"
+Miscellaneous,Pitchfork,https://pitchfork.com/rss/reviews/albums/,Music criticism
+Miscellaneous,The Quietus,https://thequietus.com/rss,Music and culture
+Miscellaneous,Resident Advisor,https://ra.co/xml/news.xml,Electronic music culture
+Miscellaneous,NPR Music,https://www.npr.org/rss/rss.php?id=1039,Music news and discovery
+Miscellaneous,Rolling Stone,https://www.rollingstone.com/rss/,Music and pop culture
+Miscellaneous,Stereogum,https://www.stereogum.com/feed/,Independent music
+Miscellaneous,CityLab,https://www.citylab.com/feeds/posts/,Urban planning and cities
+Miscellaneous,Next City,https://nextcity.org/feed,Urban innovation
+Miscellaneous,Strong Towns,https://www.strongtowns.org/rss/,Urban planning and development
+Miscellaneous,Kinfolk,https://kinfolk.com/feed/,Slow living and design
+Miscellaneous,Monocle,https://monocle.com/feed/all/,Global lifestyle and culture
+Miscellaneous,Apartamento,https://apartamentomagazine.com/feed/,Everyday living and design
+Miscellaneous,Cereal,https://readcereal.com/feed/,Travel and lifestyle
+Miscellaneous,The Gentlewoman,https://thegentlewoman.co.uk/feed,Fashion and culture
+Miscellaneous,Fantastic Man,https://fantasticman.com/feed/,Men's fashion and culture
+Miscellaneous,Criterion Current,https://www.criterion.com/current/rss,Film criticism and culture
+Miscellaneous,Film Comment,https://www.filmcomment.com/feed/,Film criticism
+Miscellaneous,Sight & Sound,https://www2.bfi.org.uk/news-opinion/sight-sound-magazine/rss.xml,Film magazine
+Miscellaneous,IndieWire,https://www.indiewire.com/feed/,Independent film news
+Miscellaneous,Marginal Revolution,https://marginalrevolution.com/feed,Economics blog
+Miscellaneous,Freakonomics,https://freakonomics.com/feed/,Economics and society
+Miscellaneous,Behavioral Scientist,https://behavioralscientist.org/feed/,Behavioral economics
+Miscellaneous,Core77,https://www.core77.com/rss/object.xml,Design and making
+Miscellaneous,Make Magazine,https://makezine.com/feed/,DIY and maker culture
+Miscellaneous,Craft,https://craftcouncil.org/feed,Contemporary craft
