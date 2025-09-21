@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 
 @dataclass
@@ -61,8 +60,8 @@ class AIService:
         if not self.api_key:
             raise ValueError("Gemini API key required. Set GEMINI_API_KEY or pass api_key parameter.")
 
-        # Initialize Gemini client
-        self.client = genai.Client(api_key=self.api_key)
+        # Configure Gemini client
+        genai.configure(api_key=self.api_key)
         
         # Prompts
         self.prompts_path = prompts_path or "config/prompts_v2.yaml"
@@ -104,10 +103,10 @@ class AIService:
         """Ping the API to validate connectivity and key."""
         try:
             self.logger.info("🔍 Testing AI service connection...")
-            response = await self.client.aio.models.generate_content(
-                model="gemini-2.5-pro",  # Use main model for testing
-                contents="ping",
-                config=types.GenerateContentConfig(max_output_tokens=1000)  # Higher limit for thinking mode
+            model = genai.GenerativeModel("gemini-2.5-pro")
+            response = await model.generate_content_async(
+                "ping",
+                generation_config=genai.GenerationConfig(max_output_tokens=1000)
             )
             self.logger.info(f"✅ AI service test response: {response.text if response.text else 'No content'}")
             return bool(response.text)
@@ -783,34 +782,34 @@ Standard: Meaningful impact on community life.""",
         
         return section_prompts.get(section, "")
 
-    def _convert_json_schema_to_gemini_schema(self, json_schema: Dict[str, Any]) -> types.Schema:
+    def _convert_json_schema_to_gemini_schema(self, json_schema: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert a JSON Schema to Gemini's Schema format.
-
-        Handles type conversions and structure differences between JSON Schema and Gemini's expected format.
+        
+        Long-term robust implementation that returns plain dictionaries
+        compatible with Google GenerativeAI library expectations.
         """
-        # Type mapping from JSON Schema to Gemini enums
+        # Type mapping from JSON Schema to Gemini type strings
         type_mapping = {
-            'string': 'STRING',
-            'number': 'NUMBER',
-            'integer': 'INTEGER',
-            'boolean': 'BOOLEAN',
-            'array': 'ARRAY',
-            'object': 'OBJECT',
-            'null': 'NULL'
+            'string': 'string',
+            'number': 'number', 
+            'integer': 'integer',
+            'boolean': 'boolean',
+            'array': 'array',
+            'object': 'object',
         }
 
-        def convert_type(schema_type):
-            """Convert JSON Schema type to Gemini type enum."""
+        def convert_type_string(schema_type):
+            """Convert JSON Schema type to Gemini type string."""
             if isinstance(schema_type, list):
                 # Handle union types like ['string', 'null'] - use the primary (non-null) type
                 primary_types = [t for t in schema_type if t != 'null']
                 if primary_types:
-                    return type_mapping.get(primary_types[0], 'STRING')
+                    return type_mapping.get(primary_types[0], 'string')
                 else:
-                    return 'NULL'
+                    return 'string'  # Default fallback
             else:
-                return type_mapping.get(schema_type, 'STRING')
+                return type_mapping.get(schema_type, 'string')
 
         def convert_schema_recursive(schema):
             """Recursively convert schema structure."""
@@ -819,13 +818,15 @@ Standard: Meaningful impact on community life.""",
 
             result = {}
 
-            # Convert type
+            # Convert type to string
             if 'type' in schema:
-                result['type'] = convert_type(schema['type'])
+                result['type'] = convert_type_string(schema['type'])
 
-            # Copy description
-            if 'description' in schema:
-                result['description'] = schema['description']
+            # Copy safe fields
+            safe_fields = ['description', 'required', 'enum']
+            for field in safe_fields:
+                if field in schema:
+                    result[field] = schema[field]
 
             # Handle properties for objects
             if 'properties' in schema:
@@ -838,21 +839,21 @@ Standard: Meaningful impact on community life.""",
             if 'items' in schema:
                 result['items'] = convert_schema_recursive(schema['items'])
 
-            # Copy required fields
-            if 'required' in schema:
-                result['required'] = schema['required']
-
-            # Copy enum values
-            if 'enum' in schema:
-                result['enum'] = schema['enum']
-
             return result
 
-        # Convert the schema
-        converted = convert_schema_recursive(json_schema)
-
-        # Create Gemini Schema object
-        return types.Schema(**converted)
+        try:
+            # Convert the schema using the recursive converter
+            converted = convert_schema_recursive(json_schema)
+            return converted
+            
+        except Exception as e:
+            # Robust fallback: create a minimal schema that always works
+            self.logger.warning(f"Schema conversion failed, using minimal fallback: {e}")
+            return {
+                'type': 'object',
+                'description': 'Function parameters',
+                'properties': {}
+            }
 
     async def _call_gemini(
         self,
@@ -879,7 +880,7 @@ Standard: Meaningful impact on community life.""",
                     contents.append(msg["content"])
 
             # Build the configuration
-            config = types.GenerateContentConfig(
+            config = genai.GenerationConfig(
                 max_output_tokens=max_tokens,
                 temperature=0.3  # Default temperature, can be made configurable
                 # Note: Gemini 2.5 Pro requires thinking mode - let it use default settings
@@ -890,12 +891,13 @@ Standard: Meaningful impact on community life.""",
                 config.system_instruction = system_instruction
 
             # Convert tools to Gemini format
+            gemini_tools = None
             if tools:
                 function_declarations = []
                 for tool in tools:
                     if tool.get("type") == "custom":
                         # Convert custom tool to Gemini function declaration format using proper types
-                        function_declaration = types.FunctionDeclaration(
+                        function_declaration = genai.types.FunctionDeclaration(
                             name=tool["name"],
                             description=tool["description"],
                             parameters=self._convert_json_schema_to_gemini_schema(tool["input_schema"])
@@ -904,24 +906,27 @@ Standard: Meaningful impact on community life.""",
 
                 if function_declarations:
                     # Create Tool with function declarations
-                    gemini_tool = types.Tool(function_declarations=function_declarations)
-                    config.tools = [gemini_tool]
+                    gemini_tools = [genai.types.Tool(function_declarations=function_declarations)]
 
                     # Handle tool choice (function calling mode)
                     if tool_choice and tool_choice.get("type") == "tool":
                         # Force function calling - use tool_config
-                        config.tool_config = types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
+                        config.tool_config = genai.protos.ToolConfig(
+                            function_calling_config=genai.protos.FunctionCallingConfig(
                                 mode="ANY",
                                 allowed_function_names=[tool_choice.get("name")]
                             )
                         )
 
             # Call the Gemini API (async)
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config
+            model = genai.GenerativeModel(
+                model_name=self.model,
+                system_instruction=system_instruction
+            )
+            response = await model.generate_content_async(
+                contents,
+                generation_config=config,
+                tools=gemini_tools
             )
 
             # Convert response to format expected by our code

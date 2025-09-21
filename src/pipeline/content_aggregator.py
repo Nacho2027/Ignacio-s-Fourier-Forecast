@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -117,7 +118,6 @@ class ContentAggregator:
         self,
         arxiv: ArxivService,
         rss: RSSService,
-        arxiv: ArxivService,
         ai: AIService,
         cache_service=None,
         embeddings=None,
@@ -126,7 +126,6 @@ class ContentAggregator:
     ) -> None:
         self.arxiv = arxiv
         self.rss = rss
-        self.arxiv = arxiv
         self.ai = ai
         self.cache_service = cache_service
         self.embeddings = embeddings
@@ -140,7 +139,8 @@ class ContentAggregator:
         self.semantic_scholar = semantic_scholar
 
         self.parallel_limit = 10
-        self.fetch_timeout = 900  # 15 minutes to accommodate rate-limited cascading LLMLayer calls (50 req/min)
+        # Allow configurable timeout for testing
+        self.fetch_timeout = int(os.getenv('RSS_FETCH_TIMEOUT', '900'))  # Default 15 minutes, can be overridden
         # Keep threshold in 30-point scale for initialization expectations/tests
         self.min_score_threshold = 12  # Lowered from 15 to include more research papers (4.0 threshold)
         # HARD LIMITS: Exact article counts per section (no ranges!)
@@ -346,7 +346,11 @@ class ContentAggregator:
         """Fetch RSS feeds for a specific section."""
         start = asyncio.get_event_loop().time()
         try:
-            rss_items = await self.rss.fetch_feeds_by_section(section)
+            # Use optimized RSS fetching if available
+            if hasattr(self.rss, 'fetch_feeds_by_section_optimized'):
+                rss_items = await self.rss.fetch_feeds_by_section_optimized(section, target_items=50, max_feeds_per_section=8)
+            else:
+                rss_items = await self.rss.fetch_feeds_by_section(section)
             
             # Convert RSS items to the format expected by the pipeline
             items = []
