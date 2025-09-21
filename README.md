@@ -6,7 +6,7 @@
   *AI-Powered Renaissance Daily Digest*
   
   [![Python](https://img.shields.io/badge/Python-3.11+-3B82F6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-  [![Claude](https://img.shields.io/badge/Claude-Anthropic-8B5CF6?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com/)
+  [![Gemini](https://img.shields.io/badge/Gemini-Google-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
   [![Docker](https://img.shields.io/badge/Docker-Ready-3B82F6?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
   [![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](LICENSE)
 </div>
@@ -23,7 +23,9 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 
 ### **Core Capabilities**
 
-- **Intelligent Multi-Source Content Aggregation**: Fetches content from academic papers (arXiv, **Semantic Scholar**), curated RSS feeds, premium news sources, and specialized publications using smart content discovery
+- **RSS-Based Content Aggregation**: Direct RSS feed integration for comprehensive content discovery across 80+ curated feeds
+- **Academic Paper Integration**: Fetches from arXiv and Semantic Scholar for cutting-edge research
+- **Gemini AI-Powered Analysis**: Uses Google's Gemini 2.5 Pro for advanced reasoning, ranking, and content synthesis
 - **7-Axis Renaissance Ranking**: AI evaluates content across dimensions including Temporal Impact, Intellectual Novelty, Cross-Domain Value, Actionable Wisdom, Source Authority, Signal Clarity, and Transformative Potential
 - **4-Layer Intelligent Deduplication**: Combines URL matching, title hashing, semantic embeddings, and AI editorial judgment to ensure unique, high-value content
 - **Cross-Sectional Synthesis**: Identifies "golden threads" connecting disparate stories and generates delightful insights
@@ -39,12 +41,12 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 - Python 3.11 or higher
 - Docker (optional, for containerized deployment)
 - Required API Keys:
-  - **Anthropic** (Claude) - Core AI reasoning and content analysis
-  - **RSS Feeds** - News and content aggregation (no API key needed)
-  - **Voyage AI** - Semantic embeddings for intelligent deduplication
-  - **Semantic Scholar** (optional, for higher academic paper limits) - Academic papers
-  - **LLMLayer** (optional, for enhanced web search with citations) - Premium news sources
+  - **Google Gemini** - Core AI reasoning and content analysis (get free key at [Google AI Studio](https://aistudio.google.com/app/apikey))
+  - **Voyage AI** - Semantic embeddings for intelligent deduplication  
   - **SMTP credentials** - Email delivery
+- Optional API Keys:
+  - **Semantic Scholar** (for higher academic paper rate limits)
+  - **RSS Feeds** - Direct feed parsing (no API key needed)
 
 ### Installation
 
@@ -56,8 +58,9 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 
 2. **Set up environment variables**
    ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and configuration
+   # Create .env file with your API keys and configuration
+   touch .env
+   # Edit .env and add the required environment variables (see Configuration section below)
    ```
 
 3. **Install dependencies**
@@ -128,7 +131,6 @@ fourier-forecast/
 ├── docker/                               # Docker-related files
 │   └── entrypoint.sh                     # Docker container entrypoint
 ├── .dockerignore                         # Docker ignore patterns
-├── .env.example                          # Environment variables template
 ├── .gitignore                            # Git ignore patterns
 ├── Dockerfile                            # Docker build instructions
 ├── docker-compose.yml                    # Docker Compose configuration
@@ -153,9 +155,7 @@ The system aggregates content using intelligent source selection for the followi
 - **Business & Finance**: Premium business sources - markets, economics, corporate news
 - **Technology & Science**: Leading tech publications - innovations and discoveries
 - **Research Papers**: arXiv (AI/CS/Physics/Math) + **Semantic Scholar** - cutting-edge academic research
-- **Startup Insights**: Entrepreneur-focused content - founder wisdom and venture trends
 - **Politics**: Non-partisan political coverage - policy and governance developments
-- **Local News**: Regional news sources - community and institutional developments
 - **Miscellaneous**: Intellectual content discovery - philosophy, culture, unexpected insights
 - **Extra**: Additional high-signal content that doesn't fit other categories
 
@@ -215,11 +215,8 @@ The final daily newsletter includes:
   3. Business & Finance - Market and economic insights
   4. Technology & Science - Innovation and discovery
   5. Research Papers - Academic breakthroughs
-  6. Startup Insights - Entrepreneurial wisdom
-  7. Politics - U.S. political developments
-  8. Local News - Regional updates
-  9. Miscellaneous - Intellectual explorations
-  10. Extra - Additional high-value content
+  6. Politics - U.S. political developments
+  7. Miscellaneous - Intellectual explorations
 - **Delightful Surprise**: Closing insight or quote
 - **Footer**: Reading time and story count
 
@@ -230,12 +227,12 @@ The final daily newsletter includes:
 Key configuration in `.env`:
 
 ```bash
-# AI Services
-ANTHROPIC_API_KEY=your_claude_api_key
-# RSS feeds used instead of LLMLayer (no API key needed)
+# AI Services (Required)
+GEMINI_API_KEY=your_gemini_api_key
 VOYAGE_API_KEY=your_voyage_api_key
+
+# Optional Services
 SEMANTIC_SCHOLAR_API_KEY=optional_for_higher_limits
-LLMLAYER_API_KEY=optional_for_enhanced_search
 
 # Email Configuration
 SMTP_HOST=smtp.gmail.com
@@ -262,34 +259,86 @@ AI behavior customization in `config/prompts_v2.yaml`:
 
 ### Run Tests
 ```bash
-# All tests
-pytest
+# Test the pipeline logic WITHOUT sending email
+env PYTHONPATH=. python3 src/main.py --test
 
-# With coverage
-pytest --cov=src tests/
+# Run full newsletter pipeline (sends to inbox)
+env PYTHONPATH=. python3 src/main.py --once
 
-# Specific service tests
-pytest tests/test_ai_service.py
-pytest tests/test_deduplication_service.py
+# Run with output logging for debugging  
+env PYTHONPATH=. python3 src/main.py --once 2>&1 | tee newsletter_output.log
 ```
 
 ### Cache Management
 ```bash
 # View cache statistics
-python src/main.py --cache-stats
+env PYTHONPATH=. python3 src/main.py --cache-stats
 
 # Clear test data (last 48 hours)
-python src/main.py --clear-test-data --cache-hours 48
+env PYTHONPATH=. python3 src/main.py --clear-test-data --cache-hours 48
 
 # Clear all cache
-python src/main.py --clear-cache
+env PYTHONPATH=. python3 src/main.py --clear-cache
+
+# Clear local cache
+rm -f cache.db
 ```
 
 ### Health Check
 ```bash
 # Check service connectivity
-python src/main.py --health
+env PYTHONPATH=. python3 src/main.py --health
 ```
+
+## **Production Deployment**
+
+### Automated Deployment
+
+The project includes deployment automation for production servers:
+
+```bash
+# Deploy to production server
+./deploy_production.sh
+
+# Make script executable if needed
+chmod +x deploy_production.sh
+```
+
+### Environment Variables for Deployment
+
+Configure deployment settings via environment variables:
+
+```bash
+export DEPLOY_USER="ubuntu"                    # SSH user for deployment
+export DEPLOY_HOST="your-production-server.com" # Production server hostname
+export SSH_KEY="path/to/your-deploy-key.pem"    # SSH private key path
+export REMOTE_PROJECT_DIR="/opt/fourier-forecast" # Remote project directory
+```
+
+### Manual Server Setup
+
+For initial server setup, the deployment uses systemd for service management:
+
+```bash
+# Service management commands (run on production server)
+sudo systemctl status fourier-forecast    # Check service status
+sudo systemctl restart fourier-forecast   # Restart service
+sudo systemctl enable fourier-forecast    # Enable auto-start
+
+# View logs
+sudo journalctl -u fourier-forecast -f    # Follow logs
+sudo journalctl -u fourier-forecast -n 50 # Last 50 entries
+```
+
+### Service Configuration
+
+The newsletter runs as a systemd service with the following characteristics:
+- **Schedule**: Daily at 5:30 AM (configured via systemd timer)
+- **User**: Dedicated service user with minimal privileges
+- **Logging**: Structured logs with rotation
+- **Restart**: Automatic restart on failure
+
+See `scripts/deploy.sh` for the complete systemd service setup.
 
 ## **License**
 
@@ -300,7 +349,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is powered by several excellent services and APIs:
 
 ### AI & Language Models
-- **[Anthropic Claude](https://www.anthropic.com/)** - Advanced AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
+- **[Google Gemini 2.5 Pro](https://ai.google.dev/)** - Advanced AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
 - **[Voyage AI](https://www.voyageai.com/)** - High-quality semantic embeddings for content similarity and deduplication
 
 ### Content Sources & Search

@@ -40,7 +40,7 @@ from src.pipeline.email_compiler import EmailCompiler
 class PipelineConfig:
     """Pipeline configuration"""
     # API Keys
-    anthropic_api_key: str  # For Claude AI service
+    gemini_api_key: str  # For Gemini AI service
     voyage_api_key: str  # For Voyage AI embeddings service
 
     # Email settings
@@ -143,7 +143,7 @@ class MainPipeline:
         except Exception:
             pass
         return PipelineConfig(
-            anthropic_api_key=os.getenv('ANTHROPIC_API_KEY', ''),
+            gemini_api_key=os.getenv('GEMINI_API_KEY', ''),
             voyage_api_key=os.getenv('VOYAGE_API_KEY', ''),
             smtp_host=os.getenv('SMTP_HOST', 'smtp.gmail.com'),
             smtp_port=int(os.getenv('SMTP_PORT', '587')),
@@ -186,8 +186,8 @@ class MainPipeline:
         Initialize all required services.
         """
         cfg = self.config
-        if not cfg.anthropic_api_key:
-            raise PipelineError("Missing ANTHROPIC_API_KEY")
+        if not cfg.gemini_api_key:
+            raise PipelineError("Missing GEMINI_API_KEY")
         if not cfg.voyage_api_key:
             raise PipelineError("Missing VOYAGE_API_KEY (required for embeddings)")
         if not cfg.smtp_user or not cfg.smtp_password:
@@ -200,7 +200,7 @@ class MainPipeline:
         except Exception:
             pass
 
-        ai = AIService(api_key=cfg.anthropic_api_key)
+        ai = AIService(api_key=cfg.gemini_api_key)
         arxiv = ArxivService()
         rss = create_rss_service()
         # Initialize Semantic Scholar service (optional API key for higher rate limits)
@@ -825,7 +825,7 @@ async def main():
     args = parser.parse_args()
 
     config = PipelineConfig(
-        anthropic_api_key=os.getenv('ANTHROPIC_API_KEY', ''),
+        gemini_api_key=os.getenv('GEMINI_API_KEY', ''),
         voyage_api_key=os.getenv('VOYAGE_API_KEY', ''),
         smtp_host=os.getenv('SMTP_HOST', 'smtp.gmail.com'),
         smtp_port=int(os.getenv('SMTP_PORT', '587')),

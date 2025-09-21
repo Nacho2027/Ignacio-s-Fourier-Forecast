@@ -37,7 +37,7 @@ if [ ! -f "$ENV_FILE" ]; then echo -e "${RED}Missing $ENV_FILE${NC}"; exit 1; fi
 echo -e "${GREEN}✓ Environment file found${NC}"
 
 echo -e "\n${YELLOW}Validating required env vars...${NC}"
-required_vars=(OPENAI_API_KEY PERPLEXITY_API_KEY SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD RECIPIENT_EMAIL)
+required_vars=(GEMINI_API_KEY VOYAGE_API_KEY SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD RECIPIENT_EMAIL)
 set -a; source "$ENV_FILE"; set +a
 for v in "${required_vars[@]}"; do
   if [ -z "${!v}" ]; then echo -e "${RED}Missing $v in $ENV_FILE${NC}"; exit 1; fi
