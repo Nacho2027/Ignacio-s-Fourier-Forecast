@@ -372,9 +372,22 @@ class OptimizedRSSService(BaseRSSService):
         if cache_key in self.feed_cache:
             cached = self.feed_cache[cache_key]
             if not cached.is_stale(self.cache_ttl_seconds):
-                self.session_stats["cache_hits"] += 1
-                self.logger.debug(f"Cache hit for {config.name}")
-                return cached.items, metrics
+                # Filter cached items by age to prevent serving stale articles
+                fresh_items = []
+                for item in cached.items:
+                    if item.published_date:
+                        item_age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+                        if item_age_hours <= 168:  # 1 week max
+                            fresh_items.append(item)
+
+                if fresh_items:
+                    self.session_stats["cache_hits"] += 1
+                    self.logger.debug(f"Cache hit for {config.name}: {len(fresh_items)} fresh items")
+                    return fresh_items, metrics
+                else:
+                    # All cached items are stale, remove from cache
+                    del self.feed_cache[cache_key]
+                    self.logger.debug(f"All cached items for {config.name} are stale")
         
         # Fetch with concurrency control
         async with self.semaphore:

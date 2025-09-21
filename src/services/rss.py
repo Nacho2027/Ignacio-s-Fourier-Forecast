@@ -111,9 +111,10 @@ class RSSService:
         # Section-based feed mappings for organized access
         self.section_feeds = self._organize_feeds_by_section()
 
-        # Cache for the session
-        self._cache: Dict[str, List[RSSItem]] = {}
+        # Cache for the session with TTL support
+        self._cache: Dict[str, Tuple[List[RSSItem], datetime]] = {}  # (items, cached_at)
         self._readings_cache: Dict[str, DailyReading] = {}
+        self._cache_ttl_hours = 2  # Cache articles for 2 hours max
         
         # Content filtering configuration
         self.quality_keywords = self._init_quality_keywords()
@@ -584,7 +585,30 @@ class RSSService:
                 del self._cache[cache_key]
                 self.logger.debug(f"Cleared cache for spiritual feed: {feed_url}")
         elif cache_key in self._cache:
-            return self._cache[cache_key]
+            cached_items, cached_at = self._cache[cache_key]
+            cache_age_hours = (datetime.now() - cached_at).total_seconds() / 3600
+
+            if cache_age_hours < self._cache_ttl_hours:
+                # Cache is still fresh, filter out old articles from cached results
+                fresh_items = []
+                for item in cached_items:
+                    if item.published_date:
+                        item_age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+                        # Only return articles that are still within reasonable age limits
+                        if item_age_hours <= 168:  # 1 week max for any cached article
+                            fresh_items.append(item)
+
+                if fresh_items:
+                    self.logger.debug(f"Using cached feed data: {len(fresh_items)} fresh items from {len(cached_items)} cached")
+                    return fresh_items
+                else:
+                    # All cached items are stale, remove from cache
+                    del self._cache[cache_key]
+                    self.logger.debug(f"All cached items for {feed_url} are stale, refetching")
+            else:
+                # Cache expired, remove it
+                del self._cache[cache_key]
+                self.logger.debug(f"Cache expired for {feed_url} (age: {cache_age_hours:.1f}h)")
 
         last_error: Optional[Exception] = None
         content: Optional[str] = None
@@ -609,9 +633,24 @@ class RSSService:
             
         if max_items:
             items = items[:max_items]
-            
-        self._cache[cache_key] = items
-        return items
+
+        # Filter items by age before caching
+        recent_items = []
+        for item in items:
+            if item.published_date:
+                item_age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+                if item_age_hours <= 168:  # Only cache items less than 1 week old
+                    recent_items.append(item)
+            else:
+                # Include items without dates but log them
+                recent_items.append(item)
+                self.logger.debug(f"Caching item without date: {item.title[:50]}...")
+
+        # Store in cache with timestamp
+        self._cache[cache_key] = (recent_items, datetime.now())
+        self.logger.debug(f"Cached {len(recent_items)} items for {feed_url}")
+
+        return recent_items
 
     def _filter_content_quality(self, items: List[RSSItem]) -> List[RSSItem]:
         """Filter RSS items for quality based on content patterns and keywords."""
@@ -995,11 +1034,38 @@ class RSSService:
         return items
 
     def _parse_date(self, date_str: str) -> datetime:
-        """Parse various RSS date formats."""
+        """Parse various RSS date formats with enhanced validation."""
+        if not date_str or not date_str.strip():
+            return datetime.now()
+
         try:
             dt = dateutil_parser.parse(date_str)
-            return dt.replace(tzinfo=None)
-        except Exception:  # noqa: BLE001
+
+            # Convert to naive datetime to avoid timezone confusion
+            if dt.tzinfo:
+                # Convert to UTC first, then remove timezone info
+                dt = dt.utctimetuple()
+                dt = datetime(*dt[:6])
+
+            # Validate that the date is reasonable (not too far in future/past)
+            now = datetime.now()
+            age_days = (now - dt).days
+
+            # Reject dates more than 365 days in the past or 1 day in the future
+            if age_days > 365:
+                self.logger.warning(f"RSS date too old ({age_days} days): {date_str}, using current time")
+                return now
+            elif age_days < -1:
+                self.logger.warning(f"RSS date too far in future ({-age_days} days): {date_str}, using current time")
+                return now
+
+            return dt
+
+        except (ValueError, TypeError, OverflowError) as e:
+            self.logger.warning(f"Failed to parse RSS date '{date_str}': {e}, using current time")
+            return datetime.now()
+        except Exception as e:  # noqa: BLE001
+            self.logger.error(f"Unexpected error parsing RSS date '{date_str}': {e}, using current time")
             return datetime.now()
 
     def _generate_cache_key(self, feed_url: str, filter_quality: bool = False, max_items: int = 10) -> str:
@@ -1143,27 +1209,49 @@ class RSSService:
             return []
             
     def _is_article_suitable(
-        self, 
-        item: RSSItem, 
-        section: str, 
-        hours_back: int, 
+        self,
+        item: RSSItem,
+        section: str,
+        hours_back: int,
         seen_urls: Set[str]
     ) -> bool:
         """Check if an RSS item is suitable for the given section."""
         # Skip duplicates
         if item.link in seen_urls:
             return False
-            
-        # Check recency
+
+        # Check recency with enhanced validation
         if item.published_date:
-            age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+            now = datetime.now()
+            # Normalize published_date to avoid timezone issues
+            pub_date = item.published_date.replace(tzinfo=None) if item.published_date.tzinfo else item.published_date
+
+            age_hours = (now - pub_date).total_seconds() / 3600
+
+            # Reject articles from the future (likely timezone/parsing errors)
+            if age_hours < 0:
+                self.logger.warning(f"Rejecting future article: {item.title[:50]}... (published: {pub_date})")
+                return False
+
+            # Apply section-specific age limits
+            max_age_for_section = self._get_section_max_age(section)
+            if age_hours > max_age_for_section:
+                self.logger.debug(f"Rejecting old article: {item.title[:50]}... (age: {age_hours:.1f}h, limit: {max_age_for_section}h)")
+                return False
+
+            # Also respect the provided hours_back parameter
             if age_hours > hours_back:
                 return False
-                
+        else:
+            # Articles without dates are suspicious - only allow for specific sections
+            if section in ['breaking_news', 'politics']:
+                self.logger.warning(f"Rejecting undated article in {section}: {item.title[:50]}...")
+                return False
+
         # Check for quality indicators
         if not self._passes_quality_filter(item, section):
             return False
-            
+
         return True
         
     def _passes_quality_filter(self, item: RSSItem, section: str) -> bool:
