@@ -23,7 +23,7 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 
 ### **Core Capabilities**
 
-- **Multi-Source Content Aggregation**: Fetches content from academic papers (arXiv, **Semantic Scholar**), premium news sources (AP, Reuters, WSJ), RSS feeds, and specialized publications
+- **Intelligent Multi-Source Content Aggregation**: Fetches content from academic papers (arXiv, **Semantic Scholar**), curated RSS feeds, premium news sources, and specialized publications using smart content discovery
 - **7-Axis Renaissance Ranking**: AI evaluates content across dimensions including Temporal Impact, Intellectual Novelty, Cross-Domain Value, Actionable Wisdom, Source Authority, Signal Clarity, and Transformative Potential
 - **4-Layer Intelligent Deduplication**: Combines URL matching, title hashing, semantic embeddings, and AI editorial judgment to ensure unique, high-value content
 - **Cross-Sectional Synthesis**: Identifies "golden threads" connecting disparate stories and generates delightful insights
@@ -39,10 +39,10 @@ The system delivers a personalized "Renaissance-style" breadth of knowledge ever
 - Python 3.11 or higher
 - Docker (optional, for containerized deployment)
 - Required API Keys:
-  - **Anthropic** (Claude) - Core AI reasoning
-  - **LLMLayer** - Web search with citations
-  - **Voyage AI** - Semantic embeddings
+  - **Google Gemini** - Core AI reasoning and content analysis
+  - **Voyage AI** - Semantic embeddings for intelligent deduplication
   - **Semantic Scholar** (optional, for higher academic paper limits) - Academic papers
+  - **LLMLayer** (optional, for enhanced web search with citations) - Premium news sources
   - **SMTP credentials** - Email delivery
 
 ### Installation
@@ -100,11 +100,11 @@ fourier-forecast/
 │   │   ├── content_aggregator.py         # Fetches & ranks content from all sources
 │   │   └── email_compiler.py             # Generates final newsletter HTML/text
 │   ├── services/                         # External integrations & business logic
-│   │   ├── ai_service.py                 # Claude AI integration (ranking, summarization, etc.)
-│   │   ├── llmlayer.py                   # Premium web search with citations
+│   │   ├── ai_service.py                 # Gemini AI integration (ranking, summarization, etc.)
+│   │   ├── rss.py                        # Intelligent RSS feed aggregation (including USCCB)
+│   │   ├── llmlayer.py                   # Optional premium web search with citations
 │   │   ├── arxiv.py                      # arXiv academic paper fetching
 │   │   ├── semantic_scholar_service.py   # Peer-reviewed paper discovery (via direct API)
-│   │   ├── rss.py                        # RSS feed aggregation (including USCCB)
 │   │   ├── cache_service.py              # SQLite persistence & dedup tracking
 │   │   ├── deduplication_service.py      # 4-layer deduplication logic
 │   │   ├── summarization_service.py      # Section-specific summarization
@@ -146,17 +146,17 @@ The daily pipeline executes at 5:00 AM ET with the following stages:
 
 ### 1. **Content Fetching** (Parallel)
 
-The system aggregates content for the following newsletter sections:
+The system aggregates content using intelligent source selection for the following newsletter sections:
 
-- **Scripture & Reflection**: USCCB daily readings + Catholic daily reflections
-- **Breaking News**: AP News, Reuters - major world events and developments
-- **Business & Finance**: Wall Street Journal, Axios - markets, economics, corporate news
-- **Technology & Science**: MIT Tech Review, IEEE Spectrum, Quanta Magazine - innovations and discoveries
+- **Scripture & Reflection**: USCCB daily readings (RSS) + Catholic daily reflections (RSS)
+- **Breaking News**: Curated high-impact news sources - major world events and developments
+- **Business & Finance**: Premium business sources - markets, economics, corporate news
+- **Technology & Science**: Leading tech publications - innovations and discoveries
 - **Research Papers**: arXiv (AI/CS/Physics/Math) + **Semantic Scholar** - cutting-edge academic research
-- **Startup Insights**: Y Combinator Blog, First Round Review - founder wisdom and venture trends
-- **Politics**: Associated Press - non-partisan U.S. political coverage
-- **Local News**: Miami Herald, Cornell/Ithaca news - regional developments
-- **Miscellaneous**: Broad intellectual queries - philosophy, culture, unexpected insights
+- **Startup Insights**: Entrepreneur-focused content - founder wisdom and venture trends
+- **Politics**: Non-partisan political coverage - policy and governance developments
+- **Local News**: Regional news sources - community and institutional developments
+- **Miscellaneous**: Intellectual content discovery - philosophy, culture, unexpected insights
 - **Extra**: Additional high-signal content that doesn't fit other categories
 
 ### 2. **Intelligent Deduplication**
@@ -231,10 +231,10 @@ Key configuration in `.env`:
 
 ```bash
 # AI Services
-ANTHROPIC_API_KEY=your_claude_api_key
-LLMLAYER_API_KEY=your_llmlayer_api_key
+GEMINI_API_KEY=your_gemini_api_key
 VOYAGE_API_KEY=your_voyage_api_key
 SEMANTIC_SCHOLAR_API_KEY=optional_for_higher_limits
+LLMLAYER_API_KEY=optional_for_enhanced_search
 
 # Email Configuration
 SMTP_HOST=smtp.gmail.com
@@ -299,11 +299,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is powered by several excellent services and APIs:
 
 ### AI & Language Models
-- **[Anthropic Claude](https://www.anthropic.com/)** - Core AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
+- **[Google Gemini](https://deepmind.google/technologies/gemini/)** - Advanced AI reasoning engine for content ranking, summarization, synthesis, and editorial judgment
 - **[Voyage AI](https://www.voyageai.com/)** - High-quality semantic embeddings for content similarity and deduplication
 
-### Content Sources & Search
-- **[LLMLayer](https://llmlayer.com/)** - Premium web search with proper citations, powering news aggregation from AP, Reuters, WSJ, and more
+### Content Sources & Discovery
+- **Intelligent RSS Feed Curation** - Curated RSS feeds from premium sources with AI-powered content selection
+- **[LLMLayer](https://llmlayer.com/)** (Optional) - Enhanced web search with proper citations for additional content discovery
 - **[arXiv](https://arxiv.org/)** - Open access to scholarly articles in physics, mathematics, computer science, and more
 - **[Semantic Scholar](https://www.semanticscholar.org/)** - AI-powered research tool for scientific literature discovery
 
