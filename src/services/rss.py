@@ -130,14 +130,15 @@ class RSSService:
         if os.path.exists(csv_path):
             configs.update(self._load_feeds_from_csv(csv_path))
         else:
-            self.logger.warning(f"RSS.csv not found at {csv_path}, using fallback configuration")
-            configs.update(self._init_fallback_feeds())
+            self.logger.warning(f"RSS.csv not found at {csv_path}, using intelligent fallback configuration")
+            configs.update(self._init_intelligent_fallback_feeds())
             
         return configs
         
     def _init_spiritual_feeds(self) -> Dict[str, FeedConfig]:
         """Initialize spiritual/scripture feed configurations (existing functionality)."""
         return {
+            # Spiritual Content (RSS-based)
             "usccb_daily": FeedConfig(
                 name="USCCB Daily Readings",
                 url="https://bible.usccb.org/readings.rss",
@@ -154,6 +155,7 @@ class RSSService:
                 section="scripture",
                 check_frequency_hours=24,
                 parse_full_content=True,
+                special_parser=None,
                 priority=9,
                 max_age_hours=48,
             ),
@@ -165,6 +167,70 @@ class RSSService:
                 parse_full_content=False,
                 priority=8,
                 max_age_hours=72,
+            ),
+            
+            # News & Current Affairs (RSS-based for high reliability)
+            "ap_news": FeedConfig(
+                name="Associated Press",
+                url="https://feeds.apnews.com/rss/apf-topnews",
+                section="breaking_news",
+                check_frequency_hours=1,
+                parse_full_content=False,
+            ),
+            "reuters_world": FeedConfig(
+                name="Reuters World News",
+                url="https://feeds.reuters.com/reuters/worldNews",
+                section="breaking_news",
+                check_frequency_hours=1,
+                parse_full_content=False,
+            ),
+            
+            # Technology & Science (RSS-based)
+            "mit_tech_review": FeedConfig(
+                name="MIT Technology Review",
+                url="https://www.technologyreview.com/feed/",
+                section="tech_science",
+                check_frequency_hours=6,
+                parse_full_content=False,
+            ),
+            "ieee_spectrum": FeedConfig(
+                name="IEEE Spectrum",
+                url="https://spectrum.ieee.org/rss/fulltext",
+                section="tech_science", 
+                check_frequency_hours=6,
+                parse_full_content=False,
+            ),
+            "nature_news": FeedConfig(
+                name="Nature News",
+                url="https://www.nature.com/nature.rss",
+                section="tech_science",
+                check_frequency_hours=12,
+                parse_full_content=False,
+            ),
+            
+            # Business & Finance (RSS-based)
+            "axios_business": FeedConfig(
+                name="Axios Business",
+                url="https://api.axios.com/feed/business",
+                section="business",
+                check_frequency_hours=2,
+                parse_full_content=False,
+            ),
+            
+            # Miscellaneous Intellectual Content (RSS-based)
+            "aeon": FeedConfig(
+                name="Aeon Essays",
+                url="https://aeon.co/feed.rss",
+                section="miscellaneous",
+                check_frequency_hours=12,
+                parse_full_content=False,
+            ),
+            "the_atlantic": FeedConfig(
+                name="The Atlantic",
+                url="https://www.theatlantic.com/feed/all/",
+                section="miscellaneous",
+                check_frequency_hours=6,
+                parse_full_content=False,
             ),
         }
         
@@ -315,27 +381,59 @@ class RSSService:
             
         return keywords
         
-    def _init_fallback_feeds(self) -> Dict[str, FeedConfig]:
-        """Initialize fallback feed configurations if CSV is not available."""
+    def _init_intelligent_fallback_feeds(self) -> Dict[str, FeedConfig]:
+        """Initialize intelligent fallback feed configurations combining CSV approach with our enhancements."""
         return {
-            # Breaking News
-            'breaking_news_bbc': FeedConfig(
-                name='BBC News', url='https://feeds.bbci.co.uk/news/rss.xml',
+            # Breaking News - High reliability sources
+            'breaking_news_ap': FeedConfig(
+                name='Associated Press', url='https://feeds.apnews.com/rss/apf-topnews',
                 section='breaking_news', check_frequency_hours=1, priority=10, max_age_hours=24
             ),
             'breaking_news_reuters': FeedConfig(
-                name='Reuters Top News', url='https://www.reuters.com/rssFeed/topNews',
+                name='Reuters World News', url='https://feeds.reuters.com/reuters/worldNews',
                 section='breaking_news', check_frequency_hours=1, priority=10, max_age_hours=24
             ),
-            # Business  
+            'breaking_news_bbc': FeedConfig(
+                name='BBC News', url='https://feeds.bbci.co.uk/news/rss.xml',
+                section='breaking_news', check_frequency_hours=1, priority=9, max_age_hours=24
+            ),
+            
+            # Business & Finance - Premium sources
+            'business_axios': FeedConfig(
+                name='Axios Business', url='https://api.axios.com/feed/business',
+                section='business', check_frequency_hours=2, priority=9, max_age_hours=48
+            ),
             'business_wsj': FeedConfig(
                 name='Wall Street Journal', url='https://feeds.a.dj.com/rss/RSSWorldNews.xml',
                 section='business', check_frequency_hours=2, priority=9, max_age_hours=48
             ),
-            # Tech & Science
+            
+            # Technology & Science - Leading sources
+            'tech_science_mit': FeedConfig(
+                name='MIT Technology Review', url='https://www.technologyreview.com/feed/',
+                section='tech_science', check_frequency_hours=6, priority=9, max_age_hours=168
+            ),
+            'tech_science_ieee': FeedConfig(
+                name='IEEE Spectrum', url='https://spectrum.ieee.org/rss/fulltext',
+                section='tech_science', check_frequency_hours=6, priority=8, max_age_hours=168
+            ),
+            'tech_science_nature': FeedConfig(
+                name='Nature News', url='https://www.nature.com/nature.rss',
+                section='tech_science', check_frequency_hours=12, priority=10, max_age_hours=168
+            ),
             'tech_science_wired': FeedConfig(
                 name='Wired', url='https://www.wired.com/feed/rss',
                 section='tech_science', check_frequency_hours=6, priority=7, max_age_hours=168
+            ),
+            
+            # Miscellaneous - Intellectual sources
+            'miscellaneous_aeon': FeedConfig(
+                name='Aeon Essays', url='https://aeon.co/feed.rss',
+                section='miscellaneous', check_frequency_hours=12, priority=8, max_age_hours=336
+            ),
+            'miscellaneous_atlantic': FeedConfig(
+                name='The Atlantic', url='https://www.theatlantic.com/feed/all/',
+                section='miscellaneous', check_frequency_hours=6, priority=9, max_age_hours=336
             ),
         }
         
@@ -420,6 +518,48 @@ class RSSService:
             
         self._cache[cache_key] = items
         return items
+
+    def _filter_content_quality(self, items: List[RSSItem]) -> List[RSSItem]:
+        """Filter RSS items for quality based on content patterns and keywords."""
+        if not items:
+            return []
+            
+        filtered_items = []
+        for item in items:
+            # Check title and description for quality indicators
+            combined_text = f"{item.title} {item.description}".lower()
+            
+            # Skip low-quality content patterns
+            skip_item = False
+            for pattern in self.exclude_patterns:
+                if re.search(pattern, combined_text):
+                    self.logger.debug(f"Excluding item due to pattern '{pattern}': {item.title[:50]}")
+                    skip_item = True
+                    break
+                    
+            if skip_item:
+                continue
+                
+            # Check for low-quality keywords
+            has_low_quality = any(keyword in combined_text for keyword in self.quality_keywords['low_quality'])
+            if has_low_quality:
+                self.logger.debug(f"Excluding item due to low-quality keywords: {item.title[:50]}")
+                continue
+                
+            # Prefer items with high-quality keywords
+            has_high_quality = any(keyword in combined_text for keyword in self.quality_keywords['high_quality'])
+            if has_high_quality:
+                item.title = f"⭐ {item.title}"  # Mark high-quality items
+                
+            filtered_items.append(item)
+            
+        self.logger.info(f"Quality filtering: {len(items)} -> {len(filtered_items)} items")
+        return filtered_items
+
+    def _generate_cache_key(self, feed_url: str, filter_quality: bool = True, max_items: int = 10) -> str:
+        """Generate cache key for feed URL with parameters."""
+        key_parts = [feed_url, str(filter_quality), str(max_items)]
+        return hashlib.md5('_'.join(key_parts).encode()).hexdigest()
 
     async def fetch_configured_feed(self, feed_name: str) -> List[RSSItem]:
         """Fetch a pre-configured feed by name."""
@@ -509,6 +649,105 @@ class RSSService:
         tasks = [fetch_one(name, cfg) for name, cfg in self.feeds.items()]
         await asyncio.gather(*tasks)
         return results
+
+    async def fetch_feeds_by_section(self, section: str, max_items_per_feed: int = 10) -> List[RSSItem]:
+        """
+        Fetch RSS feeds for a specific section with intelligent content selection.
+        This replaces hardcoded keyword searches with curated RSS feeds.
+        """
+        section_feeds = [name for name, config in self.feeds.items() if config.section == section]
+        
+        if not section_feeds:
+            self.logger.warning(f"No RSS feeds configured for section: {section}")
+            return []
+            
+        self.logger.info(f"Fetching {len(section_feeds)} RSS feeds for section: {section}")
+        
+        all_items: List[RSSItem] = []
+        
+        # Fetch all feeds for this section in parallel
+        async def fetch_section_feed(feed_name: str) -> List[RSSItem]:
+            try:
+                config = self.feeds[feed_name]
+                items = await self.fetch_feed(config.url, max_items_per_feed)
+                # Mark items with their source feed for provenance
+                for item in items:
+                    item.source_feed = config.name
+                return items
+            except Exception as e:
+                self.logger.error(f"Failed to fetch RSS feed {feed_name}: {e}")
+                return []
+        
+        tasks = [fetch_section_feed(feed_name) for feed_name in section_feeds]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Collect all successful results
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                self.logger.error(f"RSS feed fetch failed for {section_feeds[i]}: {result}")
+            else:
+                all_items.extend(result)
+        
+        # Apply intelligent content filtering based on recency and quality
+        filtered_items = self._apply_intelligent_filtering(all_items, section)
+        
+        self.logger.info(f"Collected {len(all_items)} items from RSS, filtered to {len(filtered_items)} high-quality items for {section}")
+        return filtered_items
+    
+    def _apply_intelligent_filtering(self, items: List[RSSItem], section: str) -> List[RSSItem]:
+        """
+        Apply intelligent filtering to RSS items instead of relying on hardcoded keywords.
+        Uses publication date, content quality indicators, and section-specific criteria.
+        """
+        if not items:
+            return []
+        
+        # Filter by recency (last 7 days for most sections, 24 hours for breaking news)
+        from datetime import timedelta
+        now = datetime.now()
+        if section == "breaking_news":
+            cutoff = now - timedelta(hours=24)
+        elif section == "business":
+            cutoff = now - timedelta(days=3) 
+        elif section in ["tech_science", "miscellaneous"]:
+            cutoff = now - timedelta(days=7)
+        else:
+            cutoff = now - timedelta(days=14)  # Default for other sections
+            
+        recent_items = [item for item in items if item.published_date >= cutoff]
+        
+        # Quality filtering based on content characteristics
+        quality_items = []
+        for item in recent_items:
+            # Skip items that are too short (likely not substantial content)
+            description_length = len(item.description or "") + len(item.content or "")
+            if description_length < 100:  # Minimum content threshold
+                continue
+                
+            # Skip items with common low-quality indicators
+            title_lower = item.title.lower()
+            if any(skip_phrase in title_lower for skip_phrase in [
+                "breaking:", "live updates", "live blog", "watch:", "photos:", 
+                "video:", "gallery:", "sponsored", "advertisement"
+            ]):
+                continue
+                
+            quality_items.append(item)
+        
+        # Sort by publication date (most recent first) and limit
+        quality_items.sort(key=lambda x: x.published_date, reverse=True)
+        
+        # Return top items based on section requirements
+        section_limits = {
+            "breaking_news": 15,  # More items for filtering down to 3
+            "business": 12,       # More items for filtering down to 3  
+            "tech_science": 12,   # More items for filtering down to 3
+            "miscellaneous": 20,  # More items for filtering down to 5
+            "spiritual": 10       # Fewer needed for this section
+        }
+        
+        limit = section_limits.get(section, 15)
+        return quality_items[:limit]
 
     def parse_usccb_content(self, content: str) -> DailyReading:
         """Parse USCCB daily readings from HTML content."""
