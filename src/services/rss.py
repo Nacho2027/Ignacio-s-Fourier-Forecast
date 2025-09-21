@@ -1,20 +1,35 @@
 import asyncio
-import aiohttp
-import feedparser
-from typing import List, Dict, Any, Optional
+import logging
+from typing import List, Dict, Any, Optional, Set, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 from urllib.parse import urlparse
 import re
+import csv
+import os
+import random
 import subprocess
-from bs4 import BeautifulSoup
-from dateutil import parser as dateutil_parser
-from zoneinfo import ZoneInfo
-from src.services.cache_service import ContentItem
-import logging
 
-EASTERN_TZ = ZoneInfo("America/New_York")
+# Try to import external dependencies, fall back to simple implementation
+try:
+    import aiohttp
+    import feedparser
+    from bs4 import BeautifulSoup
+    from dateutil import parser as dateutil_parser
+    from zoneinfo import ZoneInfo
+    from src.services.cache_service import ContentItem
+    EXTERNAL_DEPS_AVAILABLE = True
+except ImportError:
+    # Fallback to simple implementation
+    EXTERNAL_DEPS_AVAILABLE = False
+    from src.services.rss_simple import SimpleRSSService, SimpleRSSAdapter
+    ContentItem = None
+
+if EXTERNAL_DEPS_AVAILABLE:
+    EASTERN_TZ = ZoneInfo("America/New_York")
+else:
+    EASTERN_TZ = None
 
 
 @dataclass
@@ -70,59 +85,307 @@ class FeedConfig:
     check_frequency_hours: int
     parse_full_content: bool = False
     special_parser: Optional[str] = None  # e.g., "usccb"
+    priority: int = 1  # Higher numbers = higher priority
+    keywords: Optional[List[str]] = None  # Keywords for content filtering
+    max_age_hours: int = 168  # Maximum age of articles in hours (default 7 days)
 
 
 class RSSService:
     """
-    RSS feed integration with special support for USCCB daily readings.
+    Comprehensive RSS feed integration for all newsletter sections.
+    Replaces llmlayer with direct RSS feed parsing and intelligent content filtering.
     """
 
     def __init__(self):
-        """Initialize RSS service."""
+        """Initialize RSS service with comprehensive feed configurations."""
         self.timeout = 30  # seconds
         self.max_retries = 3
         self.logger = logging.getLogger(__name__)
 
-        # Configured feeds
-        self.feeds = self._init_feed_configs()
+        # Load feed configurations from CSV and hardcoded configs
+        self.feeds = self._load_all_feed_configs()
+        
+        # Section-based feed mappings for organized access
+        self.section_feeds = self._organize_feeds_by_section()
 
         # Cache for the session
         self._cache: Dict[str, List[RSSItem]] = {}
         self._readings_cache: Dict[str, DailyReading] = {}
+        
+        # Content filtering configuration
+        self.quality_keywords = self._init_quality_keywords()
+        self.exclude_patterns = self._init_exclude_patterns()
+        
+        self.logger.info(f"Initialized RSS service with {len(self.feeds)} feeds across {len(self.section_feeds)} sections")
 
-    def _init_feed_configs(self) -> Dict[str, FeedConfig]:
-        """Initialize feed configurations"""
+    def _load_all_feed_configs(self) -> Dict[str, FeedConfig]:
+        """Load comprehensive feed configurations from CSV and hardcoded configs."""
+        configs = {}
+        
+        # Load spiritual/scripture feeds (maintain existing functionality)
+        configs.update(self._init_spiritual_feeds())
+        
+        # Load newsletter feeds from RSS.csv
+        csv_path = "/code/InternalDocs/RSS.csv"
+        if os.path.exists(csv_path):
+            configs.update(self._load_feeds_from_csv(csv_path))
+        else:
+            self.logger.warning(f"RSS.csv not found at {csv_path}, using fallback configuration")
+            configs.update(self._init_fallback_feeds())
+            
+        return configs
+        
+    def _init_spiritual_feeds(self) -> Dict[str, FeedConfig]:
+        """Initialize spiritual/scripture feed configurations (existing functionality)."""
         return {
             "usccb_daily": FeedConfig(
                 name="USCCB Daily Readings",
                 url="https://bible.usccb.org/readings.rss",
-                section="spiritual",
+                section="scripture",
                 check_frequency_hours=24,
                 parse_full_content=True,
                 special_parser="usccb",
+                priority=10,
+                max_age_hours=48,
             ),
             "catholic_daily_reflections": FeedConfig(
                 name="Catholic Daily Reflections",
                 url="https://catholic-daily-reflections.com/feed/",
-                section="spiritual",
+                section="scripture",
                 check_frequency_hours=24,
                 parse_full_content=True,
-                special_parser=None,  # Use standard RSS parsing
+                priority=9,
+                max_age_hours=48,
             ),
             "vatican_news": FeedConfig(
                 name="Vatican News",
                 url="https://www.vaticannews.va/en/pope.rss",
-                section="spiritual",
+                section="scripture",
                 check_frequency_hours=12,
                 parse_full_content=False,
+                priority=8,
+                max_age_hours=72,
             ),
         }
+        
+    def _load_feeds_from_csv(self, csv_path: str) -> Dict[str, FeedConfig]:
+        """Load feed configurations from RSS.csv file."""
+        configs = {}
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                for i, row in enumerate(reader):
+                    section = row.get('Section', '').lower().replace(' ', '_').replace('&', 'and')
+                    source = row.get('Source', '').strip()
+                    url = row.get('RSS Feed URL', '').strip()
+                    description = row.get('Description', '').strip()
+                    
+                    if not url or not section or not source:
+                        continue
+                        
+                    # Map CSV sections to our internal section names
+                    section = self._map_csv_section_to_internal(section)
+                    if not section:
+                        continue
+                        
+                    # Generate unique feed ID
+                    feed_id = f"{section}_{source.lower().replace(' ', '_').replace('.', '').replace('-', '_')}"
+                    
+                    # Determine priority based on source authority
+                    priority = self._get_source_priority(source, section)
+                    
+                    # Set max age based on section
+                    max_age = self._get_section_max_age(section)
+                    
+                    # Extract keywords for filtering
+                    keywords = self._extract_keywords_for_source(source, section, description)
+                    
+                    configs[feed_id] = FeedConfig(
+                        name=source,
+                        url=url,
+                        section=section,
+                        check_frequency_hours=self._get_check_frequency(section),
+                        parse_full_content=False,  # Start with summaries for performance
+                        priority=priority,
+                        keywords=keywords,
+                        max_age_hours=max_age,
+                    )
+                    
+            self.logger.info(f"Loaded {len(configs)} feed configurations from CSV")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load RSS feeds from CSV: {e}")
+            
+        return configs
+        
+    def _map_csv_section_to_internal(self, csv_section: str) -> Optional[str]:
+        """Map CSV section names to internal section names."""
+        mapping = {
+            'breaking_news': 'breaking_news',
+            'business': 'business', 
+            'tech_and_science': 'tech_science',
+            'research_papers': 'research_papers',
+            'politics': 'politics',
+            'miscellaneous': 'miscellaneous',
+        }
+        return mapping.get(csv_section)
+        
+    def _get_source_priority(self, source: str, section: str) -> int:
+        """Determine source priority based on authority and section."""
+        # High priority sources (premium, authoritative)
+        high_priority = {
+            'BBC News': 10, 'Reuters Top News': 10, 'Associated Press': 10,
+            'Wall Street Journal': 9, 'Financial Times': 9, 'Bloomberg': 9,
+            'Nature News': 10, 'Science Magazine': 10, 'MIT Technology Review': 9,
+            'The Atlantic': 9, 'The New Yorker': 9, 'Aeon': 8,
+        }
+        
+        # Medium priority sources
+        medium_priority = {
+            'CNN World': 7, 'Guardian World News': 7, 'NPR News': 7,
+            'CNBC': 6, 'MarketWatch': 6, 'Harvard Business Review': 8,
+            'TechCrunch': 6, 'Wired': 7, 'The Verge': 6,
+            'Politico': 7, 'The Hill': 6,
+        }
+        
+        # Check exact matches first
+        if source in high_priority:
+            return high_priority[source]
+        if source in medium_priority:
+            return medium_priority[source]
+            
+        # Section-based priorities for unlisted sources
+        if section == 'research_papers':
+            return 8 if 'arxiv' in source.lower() or 'nature' in source.lower() else 5
+        elif section == 'breaking_news':
+            return 7 if any(term in source.lower() for term in ['news', 'times', 'post']) else 4
+        elif section == 'business':
+            return 6 if any(term in source.lower() for term in ['business', 'financial', 'market']) else 4
+        else:
+            return 5  # Default priority
+            
+    def _get_section_max_age(self, section: str) -> int:
+        """Get maximum article age in hours for each section."""
+        age_limits = {
+            'breaking_news': 24,      # Very recent
+            'business': 48,           # Recent business news  
+            'politics': 48,           # Recent political developments
+            'tech_science': 168,      # Tech can be up to a week old
+            'research_papers': 720,   # Research papers can be up to a month old
+            'miscellaneous': 336,     # Intellectual content up to 2 weeks
+            'scripture': 48,          # Daily readings
+        }
+        return age_limits.get(section, 168)  # Default 1 week
+        
+    def _get_check_frequency(self, section: str) -> int:
+        """Get check frequency in hours for each section."""
+        frequencies = {
+            'breaking_news': 1,       # Check hourly
+            'business': 2,            # Check every 2 hours
+            'politics': 3,            # Check every 3 hours
+            'tech_science': 6,        # Check every 6 hours
+            'research_papers': 24,    # Check daily
+            'miscellaneous': 12,      # Check twice daily
+            'scripture': 24,          # Check daily
+        }
+        return frequencies.get(section, 6)  # Default every 6 hours
+        
+    def _extract_keywords_for_source(self, source: str, section: str, description: str) -> List[str]:
+        """Extract relevant keywords for content filtering based on source and section."""
+        keywords = []
+        
+        # Section-based keywords
+        section_keywords = {
+            'breaking_news': ['breaking', 'urgent', 'developing', 'alert', 'just in', 'live'],
+            'business': ['business', 'market', 'economy', 'finance', 'earnings', 'stock', 'trade'],
+            'tech_science': ['technology', 'science', 'research', 'innovation', 'breakthrough', 'study'],
+            'research_papers': ['research', 'study', 'paper', 'journal', 'findings', 'analysis'],
+            'politics': ['politics', 'government', 'policy', 'congress', 'senate', 'election'],
+            'miscellaneous': ['culture', 'arts', 'philosophy', 'society', 'analysis', 'essay'],
+        }
+        
+        keywords.extend(section_keywords.get(section, []))
+        
+        # Source-specific keywords from description
+        if description:
+            desc_words = description.lower().split()
+            relevant_words = [word for word in desc_words if len(word) > 4 and word.isalpha()]
+            keywords.extend(relevant_words[:3])  # Add top 3 relevant words
+            
+        return keywords
+        
+    def _init_fallback_feeds(self) -> Dict[str, FeedConfig]:
+        """Initialize fallback feed configurations if CSV is not available."""
+        return {
+            # Breaking News
+            'breaking_news_bbc': FeedConfig(
+                name='BBC News', url='https://feeds.bbci.co.uk/news/rss.xml',
+                section='breaking_news', check_frequency_hours=1, priority=10, max_age_hours=24
+            ),
+            'breaking_news_reuters': FeedConfig(
+                name='Reuters Top News', url='https://www.reuters.com/rssFeed/topNews',
+                section='breaking_news', check_frequency_hours=1, priority=10, max_age_hours=24
+            ),
+            # Business  
+            'business_wsj': FeedConfig(
+                name='Wall Street Journal', url='https://feeds.a.dj.com/rss/RSSWorldNews.xml',
+                section='business', check_frequency_hours=2, priority=9, max_age_hours=48
+            ),
+            # Tech & Science
+            'tech_science_wired': FeedConfig(
+                name='Wired', url='https://www.wired.com/feed/rss',
+                section='tech_science', check_frequency_hours=6, priority=7, max_age_hours=168
+            ),
+        }
+        
+    def _organize_feeds_by_section(self) -> Dict[str, List[str]]:
+        """Organize feed IDs by section for efficient lookup."""
+        section_feeds = {}
+        for feed_id, config in self.feeds.items():
+            section = config.section
+            if section not in section_feeds:
+                section_feeds[section] = []
+            section_feeds[section].append(feed_id)
+            
+        # Sort feeds within each section by priority (descending)
+        for section in section_feeds:
+            section_feeds[section].sort(
+                key=lambda feed_id: self.feeds[feed_id].priority,
+                reverse=True
+            )
+            
+        return section_feeds
+        
+    def _init_quality_keywords(self) -> Dict[str, List[str]]:
+        """Initialize quality keywords for content filtering."""
+        return {
+            'high_quality': [
+                'analysis', 'investigation', 'exclusive', 'report', 'research',
+                'study', 'findings', 'breakthrough', 'innovation', 'insight'
+            ],
+            'low_quality': [
+                'listicle', 'clickbait', 'viral', 'trending', 'shocking',
+                'you won\'t believe', 'celebrities', 'gossip'
+            ]
+        }
+        
+    def _init_exclude_patterns(self) -> List[str]:
+        """Initialize patterns for excluding low-quality content."""
+        return [
+            r'\d+\s+(ways|things|reasons|tips)',  # Listicles
+            r'you\s+won\'t\s+believe',              # Clickbait
+            r'\d+\s+photos?\s+that',                # Photo galleries
+            r'celebrities?\s+(who|that|wearing)',   # Celebrity content
+            r'(watch|see)\s+what\s+happens?',       # Clickbait videos
+        ]
 
-    async def fetch_feed(self, feed_url: str, max_items: int = 10) -> List[RSSItem]:
+    async def fetch_feed(self, feed_url: str, max_items: int = 10, filter_quality: bool = True) -> List[RSSItem]:
         """
-        Fetch and parse an RSS feed.
+        Fetch and parse an RSS feed with intelligent filtering.
         """
-        cache_key = self._generate_cache_key(feed_url)
+        cache_key = self._generate_cache_key(feed_url, filter_quality, max_items)
+        
         # Don't use cache for daily readings to ensure fresh content
         if "usccb" in feed_url or "catholic" in feed_url:
             if cache_key in self._cache:
@@ -133,18 +396,28 @@ class RSSService:
 
         last_error: Optional[Exception] = None
         content: Optional[str] = None
-        for _ in range(self.max_retries):
+        for attempt in range(self.max_retries):
             try:
                 content = await self._fetch_with_retry(feed_url)
                 break
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
-                await asyncio.sleep(0.25)
+                # Exponential backoff
+                wait_time = 0.25 * (2 ** attempt)
+                await asyncio.sleep(wait_time)
+                
         if content is None:
             raise RSSServiceError(str(last_error) if last_error else "Failed to fetch feed")
+            
         items = self._parse_feed(content, feed_url)
+        
+        # Apply quality filtering if requested
+        if filter_quality:
+            items = self._filter_content_quality(items)
+            
         if max_items:
             items = items[:max_items]
+            
         self._cache[cache_key] = items
         return items
 
@@ -165,8 +438,8 @@ class RSSService:
 
     async def get_daily_readings(self, date: Optional[datetime] = None) -> DailyReading:
         """Get Catholic daily readings for a specific date."""
-        now_et = datetime.now(EASTERN_TZ)
-        target_date = (date.astimezone(EASTERN_TZ) if date and date.tzinfo else (date or now_et)).date()
+        now_et = datetime.now(EASTERN_TZ) if EASTERN_TZ else datetime.now()
+        target_date = (date.astimezone(EASTERN_TZ) if date and date.tzinfo and EASTERN_TZ else (date or now_et)).date()
         
         # Clear stale cache entries (anything not from today)
         today_key = target_date.isoformat()
@@ -194,7 +467,7 @@ class RSSService:
                 reading = self.parse_usccb_content(content_html)
 
         # Ensure date field in ET midnight
-        reading.date = datetime.combine(target_date, datetime.min.time(), tzinfo=EASTERN_TZ)
+        reading.date = datetime.combine(target_date, datetime.min.time(), tzinfo=EASTERN_TZ if EASTERN_TZ else None)
         self._readings_cache[cache_key] = reading
         return reading
 
@@ -206,7 +479,7 @@ class RSSService:
 
     async def _fetch_usccb_daily(self) -> List[RSSItem]:
         """Fetch today's USCCB daily reading page and wrap as RSSItem."""
-        now_et = datetime.now(EASTERN_TZ)
+        now_et = datetime.now(EASTERN_TZ) if EASTERN_TZ else datetime.now()
         mm = f"{now_et.month:02d}"
         dd = f"{now_et.day:02d}"
         yy = f"{now_et.year % 100:02d}"
@@ -342,7 +615,7 @@ class RSSService:
         }
 
         return DailyReading(
-            date=datetime.now(EASTERN_TZ),
+            date=datetime.now(EASTERN_TZ) if EASTERN_TZ else datetime.now(),
             liturgical_day=liturgical_day,
             first_reading=first_reading,
             responsorial_psalm=responsorial_psalm,
@@ -468,9 +741,10 @@ class RSSService:
         except Exception:  # noqa: BLE001
             return datetime.now()
 
-    def _generate_cache_key(self, feed_url: str) -> str:
-        """Generate cache key for feed URL"""
-        return hashlib.md5(feed_url.encode()).hexdigest()
+    def _generate_cache_key(self, feed_url: str, filter_quality: bool = False, max_items: int = 10) -> str:
+        """Generate cache key for feed URL with parameters"""
+        key_parts = [feed_url, str(filter_quality), str(max_items)]
+        return hashlib.md5(':'.join(key_parts).encode()).hexdigest()
 
     def _extract_liturgical_date(self, content: str) -> str:
         """Extract liturgical date from USCCB content."""
@@ -498,7 +772,7 @@ class RSSService:
         if re.match(r'^[\d\-\.,;:\s]+$', cleaned):
             self.logger.warning(f"Reference appears incomplete (numbers only): '{cleaned}' for keywords {label_keywords}")
             # Still return it but add a warning - the expansion function might help
-            return cleaned or self._get_fallback_reference(label_keywords)
+            return cleaned if cleaned else self._get_fallback_reference(label_keywords)
 
         # Check for minimum length
         if len(cleaned) < 2:
@@ -530,8 +804,339 @@ class RSSService:
         return "Daily Reading"
 
 
+    async def fetch_section_content(
+        self, 
+        section: str, 
+        target_count: int = 5, 
+        max_feeds: int = 5,
+        hours_back: int = 24
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch content for a specific newsletter section using RSS feeds.
+        This is the main method that replaces llmlayer functionality.
+        
+        Args:
+            section: Section name (breaking_news, business, tech_science, etc.)
+            target_count: Target number of articles to return
+            max_feeds: Maximum number of feeds to query
+            hours_back: Look back this many hours for articles
+            
+        Returns:
+            List of structured articles ready for the newsletter pipeline
+        """
+        if section not in self.section_feeds:
+            self.logger.warning(f"No feeds configured for section: {section}")
+            return []
+            
+        feed_ids = self.section_feeds[section][:max_feeds]
+        all_articles = []
+        seen_urls: Set[str] = set()
+        
+        self.logger.info(f"Fetching content for {section} from {len(feed_ids)} feeds")
+        
+        # Fetch from feeds in parallel
+        fetch_tasks = []
+        for feed_id in feed_ids:
+            config = self.feeds[feed_id]
+            task = self._fetch_feed_with_config(config, target_count * 2)
+            fetch_tasks.append(task)
+            
+        # Wait for all feeds to complete (or timeout)
+        feed_results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+        
+        # Process results
+        for i, result in enumerate(feed_results):
+            if isinstance(result, Exception):
+                feed_id = feed_ids[i]
+                self.logger.warning(f"Feed {feed_id} failed: {result}")
+                continue
+                
+            # Filter and process articles
+            for item in result:
+                if self._is_article_suitable(item, section, hours_back, seen_urls):
+                    article = self._convert_rss_to_article(item, section)
+                    all_articles.append(article)
+                    seen_urls.add(item.link)
+                    
+                    if len(all_articles) >= target_count * 2:  # Get extra for better selection
+                        break
+                        
+        # Sort by quality and recency
+        all_articles.sort(key=lambda x: (
+            x.get('priority_score', 0),
+            x.get('published', '1970-01-01')
+        ), reverse=True)
+        
+        # Return top articles
+        selected = all_articles[:target_count]
+        self.logger.info(f"Selected {len(selected)} articles for {section} from {len(all_articles)} candidates")
+        
+        return selected
+        
+    async def _fetch_feed_with_config(self, config: FeedConfig, max_items: int) -> List[RSSItem]:
+        """Fetch a feed with its specific configuration."""
+        try:
+            return await self.fetch_feed(config.url, max_items=max_items, filter_quality=True)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch {config.name}: {e}")
+            return []
+            
+    def _is_article_suitable(
+        self, 
+        item: RSSItem, 
+        section: str, 
+        hours_back: int, 
+        seen_urls: Set[str]
+    ) -> bool:
+        """Check if an RSS item is suitable for the given section."""
+        # Skip duplicates
+        if item.link in seen_urls:
+            return False
+            
+        # Check recency
+        if item.published_date:
+            age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+            if age_hours > hours_back:
+                return False
+                
+        # Check for quality indicators
+        if not self._passes_quality_filter(item, section):
+            return False
+            
+        return True
+        
+    def _passes_quality_filter(self, item: RSSItem, section: str) -> bool:
+        """Check if content passes quality filters."""
+        title_lower = item.title.lower()
+        desc_lower = (item.description or '').lower()
+        content_text = f"{title_lower} {desc_lower}"
+        
+        # Exclude low-quality patterns
+        for pattern in self.exclude_patterns:
+            if re.search(pattern, content_text, re.IGNORECASE):
+                return False
+                
+        # Check for low-quality keywords
+        low_quality_count = sum(
+            1 for keyword in self.quality_keywords['low_quality']
+            if keyword in content_text
+        )
+        
+        # Check for high-quality keywords
+        high_quality_count = sum(
+            1 for keyword in self.quality_keywords['high_quality']
+            if keyword in content_text
+        )
+        
+        # Simple quality scoring
+        quality_score = high_quality_count - (low_quality_count * 2)
+        
+        # Section-specific quality thresholds
+        thresholds = {
+            'breaking_news': -1,      # More lenient for breaking news
+            'business': 0,            # Standard threshold
+            'tech_science': 0,        # Standard threshold
+            'research_papers': 1,     # Higher threshold for academic content
+            'politics': 0,            # Standard threshold
+            'miscellaneous': 1,       # Higher threshold for intellectual content
+        }
+        
+        return quality_score >= thresholds.get(section, 0)
+        
+    def _convert_rss_to_article(self, item: RSSItem, section: str) -> Dict[str, Any]:
+        """Convert RSS item to article format expected by newsletter pipeline."""
+        # Calculate priority score based on source and content
+        source_priority = 0
+        for feed_id, config in self.feeds.items():
+            if config.url == item.source_feed:
+                source_priority = config.priority
+                break
+                
+        content_score = self._calculate_content_score(item, section)
+        priority_score = source_priority + content_score
+        
+        # Extract clean summary
+        summary = self._extract_clean_summary(item)
+        
+        return {
+            'headline': item.title,
+            'url': item.link,
+            'summary_text': summary,
+            'source': self._extract_source_name(item.source_feed),
+            'published': item.published_date.isoformat() if item.published_date else None,
+            'priority_score': priority_score,
+            'section': section,
+            'metadata': {
+                'author': item.author,
+                'categories': item.categories or [],
+                'guid': item.guid,
+                'feed_url': item.source_feed,
+            }
+        }
+        
+    def _calculate_content_score(self, item: RSSItem, section: str) -> float:
+        """Calculate content quality score based on various factors."""
+        score = 0.0
+        content_text = f"{item.title} {item.description or ''}".lower()
+        
+        # High-quality indicators
+        for keyword in self.quality_keywords['high_quality']:
+            if keyword in content_text:
+                score += 0.5
+                
+        # Section-specific keywords
+        if section in self.quality_keywords:
+            for keyword in self.quality_keywords[section]:
+                if keyword in content_text:
+                    score += 0.3
+                    
+        # Title length (optimal range)
+        title_len = len(item.title)
+        if 30 <= title_len <= 100:
+            score += 0.2
+        elif title_len > 150:
+            score -= 0.3
+            
+        # Description quality
+        if item.description and len(item.description) > 50:
+            score += 0.2
+            
+        # Recency boost (more recent = higher score)
+        if item.published_date:
+            age_hours = (datetime.now() - item.published_date.replace(tzinfo=None)).total_seconds() / 3600
+            if age_hours < 6:
+                score += 0.3
+            elif age_hours < 24:
+                score += 0.1
+                
+        return score
+        
+    def _extract_clean_summary(self, item: RSSItem) -> str:
+        """Extract and clean summary text from RSS item."""
+        # Prefer full content over description
+        text = item.content or item.description or ''
+        
+        # Remove HTML tags
+        if '<' in text and '>' in text:
+            soup = BeautifulSoup(text, 'html.parser')
+            text = soup.get_text(' ', strip=True)
+            
+        # Clean up common RSS artifacts
+        text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+        text = re.sub(r'Continue reading.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Read more.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\[.*?\]', '', text)  # Remove bracketed content
+        
+        # Truncate to reasonable length
+        if len(text) > 300:
+            text = text[:297] + '...'
+            
+        return text.strip()
+        
+    def _extract_source_name(self, feed_url: str) -> str:
+        """Extract clean source name from feed URL."""
+        # Check if we have a configured name for this URL
+        for config in self.feeds.values():
+            if config.url == feed_url:
+                return config.name
+                
+        # Extract from URL
+        parsed = urlparse(feed_url)
+        domain = parsed.netloc.replace('www.', '')
+        
+        # Clean up common domain suffixes
+        if domain.endswith('.com'):
+            domain = domain[:-4]
+        elif domain.endswith('.org'):
+            domain = domain[:-4]
+            
+        return domain.replace('.', ' ').title()
+        
+    def _filter_content_quality(self, items: List[RSSItem]) -> List[RSSItem]:
+        """Filter RSS items based on quality indicators."""
+        filtered_items = []
+        
+        for item in items:
+            # Basic quality checks
+            if not item.title or len(item.title) < 10:
+                continue
+                
+            if not item.link or not item.link.startswith('http'):
+                continue
+                
+            # Content quality check
+            if self._passes_basic_quality_check(item):
+                filtered_items.append(item)
+                
+        return filtered_items
+        
+    def _passes_basic_quality_check(self, item: RSSItem) -> bool:
+        """Basic quality check for RSS items."""
+        title_lower = item.title.lower()
+        
+        # Skip obvious spam/low-quality content
+        spam_indicators = [
+            'click here', 'amazing', 'shocking', 'unbelievable',
+            'you won\'t believe', 'this one trick', 'doctors hate'
+        ]
+        
+        for indicator in spam_indicators:
+            if indicator in title_lower:
+                return False
+                
+        return True
+        
+    async def get_section_feeds_status(self) -> Dict[str, Any]:
+        """Get status information for all section feeds."""
+        status = {}
+        
+        for section, feed_ids in self.section_feeds.items():
+            section_status = {
+                'total_feeds': len(feed_ids),
+                'feeds': [],
+                'last_check': datetime.now().isoformat(),
+            }
+            
+            for feed_id in feed_ids:
+                config = self.feeds[feed_id]
+                feed_status = {
+                    'name': config.name,
+                    'url': config.url,
+                    'priority': config.priority,
+                    'max_age_hours': config.max_age_hours,
+                    'check_frequency_hours': config.check_frequency_hours,
+                }
+                section_status['feeds'].append(feed_status)
+                
+            status[section] = section_status
+            
+        return status
+
+
 class RSSServiceError(Exception):
     """Custom exception for RSS service failures"""
     pass
+
+
+# Factory functions to create the appropriate RSS service
+def create_rss_service():
+    """Create RSS service using available dependencies."""
+    if EXTERNAL_DEPS_AVAILABLE:
+        return RSSService()
+    else:
+        logging.warning("External dependencies not available, using simple RSS implementation")
+        return SimpleRSSService()
+
+
+def create_rss_adapter(rss_service=None):
+    """Create RSS adapter using available dependencies.""" 
+    if rss_service is None:
+        rss_service = create_rss_service()
+        
+    if EXTERNAL_DEPS_AVAILABLE:
+        from src.services.rss_content_adapter import RSSContentAdapter
+        return RSSContentAdapter(rss_service)
+    else:
+        return SimpleRSSAdapter(rss_service)
 
 
