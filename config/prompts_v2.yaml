@@ -231,7 +231,7 @@ gpt5_serendipity_engine:
 
 gpt5_morning_greeting:
   system: |
-    Creative greeting generator: two sentences max, under 200 characters total.
+    Creative greeting generator for Ignacio: start with "Good Morning Ignacio!" + motivational phrase + two sentences about today's news.
     Be specific to today and do not duplicate the golden thread theme.
     Call "return_greeting".
   template: |
@@ -244,25 +244,42 @@ gpt5_morning_greeting:
     {golden_thread}
 
     REQUIREMENTS:
-    - Create a greeting that connects to today's specific news
-    - CRITICAL: Keep to 2 sentences MAXIMUM (under 200 characters total)
+    - START with "Good Morning Ignacio!" followed by a short motivational phrase
+    - Then add 2 sentences about today's specific news
+    - TOTAL: Keep under 200 characters including the greeting
     - Be specific with names, numbers, and concrete events
     - DO NOT repeat or paraphrase the golden thread insight
     - Focus on a DIFFERENT story from the golden thread
     - Make it punchy and interesting
 
-    Examples of CONCISE greetings (create your own):
-    - "Good morning! The Fed paused rates at 5.5% while tech stocks surged 3%. Money stays expensive but optimism is cheap."
-    - "Good morning! Miami saved its night buses. Sometimes the best innovation is preservation."
-    - "Good morning! Cornell got $50M for quantum research. The future is being written in upstate New York."
+    STRUCTURE: "Good Morning Ignacio! [Motivational phrase]. [News sentence 1]. [News sentence 2]."
+
+    Examples of GOOD greetings (follow this format):
+    - "Good Morning Ignacio! Time to make today count. The Fed paused rates at 5.5% while tech stocks surged 3%. Money stays expensive but optimism is cheap."
+    - "Good Morning Ignacio! Ready to crush your goals? Miami saved its night buses while Cornell secured $50M for quantum research. Investment beats abandonment today."
+    - "Good Morning Ignacio! Let's get after it. NVIDIA hit new highs as Congress debates chip subsidies. The future has a price tag attached."
+
+    MOTIVATIONAL PHRASE OPTIONS (choose one or create similar):
+    - "Time to make today count"
+    - "Ready to crush your goals?"
+    - "Let's make moves today"
+    - "Time to level up"
+    - "Ready to own this day?"
+    - "Let's get after it"
+    - "Time to execute"
+    - "Ready to make it happen?"
+    - "Let's dominate today"
+    - "Time to rise and grind"
+    - "Ready to build something great?"
+    - "Let's turn potential into progress"
 
     Remember: The greeting should complement, not duplicate, the golden thread.
-    Keep it SHORT and COMPLETE - no truncation!
+    Keep it SHORT, PERSONAL, and COMPLETE!
 
 gpt5_subject_line:
   system: |
     Email subject line generator: one clear sentence summarizing today.
-    Aim for 50–70 characters, start with "Good morning!", no emojis/special Unicode.
+    Aim for 50–70 characters, no emojis/special Unicode.
     Call "return_subject".
   template: |
     Generate a one-sentence email subject line summary of today's forecast.
@@ -276,21 +293,21 @@ gpt5_subject_line:
     Return ONLY the subject line, nothing else.
 
     Examples of good EMAIL SUBJECT LINES (50-70 chars):
-    - "Good morning! Fed cuts rates as tech faces scrutiny"
-    - "Good morning! AI advances amid market volatility"
-    - "Good morning! Climate tech surges, tensions rise"
-    - "Good morning! Infrastructure drives today's shifts"
-    - "Good morning! Complex problems, simple solutions"
-    
+    - "Fed cuts rates as tech faces scrutiny"
+    - "AI advances amid market volatility"
+    - "Climate tech surges, tensions rise"
+    - "Infrastructure drives today's shifts"
+    - "Complex problems, simple solutions"
+
     Requirements:
-    - Start with "Good morning!"
+    - DO NOT start with "Good morning!" (this is an email subject line)
     - 50-70 characters TOTAL (this is an EMAIL SUBJECT LINE - keep it concise!)
     - NO EMOJIS, NO special characters, NO Unicode
     - Be SPECIFIC to today's actual content
-    - Create fresh, varied greetings - avoid repetitive patterns
+    - Create fresh, varied subject lines - avoid repetitive patterns
     - Connect directly to the newsletter's themes
-    
-    Return greeting only.
+
+    Return subject line only.
 
 gpt5_pattern_synthesis:
   system: |
