@@ -1292,7 +1292,7 @@ Standard: Meaningful impact on community life.""",
             ]
             forced_choice = {"type": "tool", "name": "return_subject"}
 
-            resp = await self._call_gemini(messages=messages, max_tokens=256, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
 
             # Extract subject from tool call
             tool = self._extract_tool_call(resp)
