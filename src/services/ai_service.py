@@ -109,8 +109,15 @@ class AIService:
                 contents="ping",
                 config=types.GenerateContentConfig(max_output_tokens=100)
             )
-            self.logger.info(f"✅ AI service test response: {response.text if response.text else 'No content'}")
-            return bool(response.text)
+            # Handle response.text access safely
+            try:
+                response_text = response.text if hasattr(response, 'text') else None
+                self.logger.info(f"✅ AI service test response: {response_text if response_text else 'No content'}")
+                return bool(response_text)
+            except ValueError:
+                # response.text throws error when function calls are present
+                self.logger.info("✅ AI service test successful (function call response)")
+                return True
         except Exception as e:
             self.logger.error(f"❌ AI service test connection failed: {e}")
             # Log more context for debugging
@@ -294,14 +301,14 @@ identify genuinely novel developments vs. variations on recurring themes."""
                 }
             }
         ]
-        forced_choice = {"type": "tool", "name": "return_ranking"}
+        tool_choice = {"type": "tool", "name": "return_ranking"}
         # Increase token limit for ranking many papers (30 papers * ~150 tokens each = ~4500 tokens)
         max_tokens = 8192 if len(enhanced_stories) > 15 else 4096
-        resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
+        resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=tool_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
             # single retry enforcing function again with same token limit
-            resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=max_tokens, tools=tools, tool_choice=tool_choice)
             tool = self._extract_tool_call(resp)
 
         data: List[Dict[str, Any]] = []
@@ -415,11 +422,11 @@ identify genuinely novel developments vs. variations on recurring themes."""
                 }
             }
         ]
-        forced_choice = {"type": "tool", "name": "return_editorial_decision"}
-        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+        tool_choice = {"type": "tool", "name": "return_editorial_decision"}
+        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=tool_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=tool_choice)
             tool = self._extract_tool_call(resp)
 
         if tool is not None:
@@ -451,26 +458,30 @@ identify genuinely novel developments vs. variations on recurring themes."""
     async def find_golden_thread(self, all_content: Dict[str, List]) -> Optional[str]:
         context = {"all_content": all_content, "all_content_json": json.dumps(all_content)}
         messages = self._format_prompt("gpt5_golden_thread", context)
-        tools = [
-            {
-                "type": "custom",
-                "name": "return_golden_thread",
-                "description": "Return golden thread summary.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "thread": {"type": ["string", "null"]},
-                        "confidence": {"type": "number"}
-                    },
-                    "required": ["thread", "confidence"]
-                }
-            }
-        ]
-        forced_choice = {"type": "tool", "name": "return_golden_thread"}
-        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+        function = types.FunctionDeclaration(
+            name="return_golden_thread",
+            description="Return golden thread summary.",
+            parameters=types.Schema(
+                type='OBJECT',
+                properties={
+                    'thread': types.Schema(
+                        type='STRING',
+                        description='The golden thread insight connecting stories'
+                    ),
+                    'confidence': types.Schema(
+                        type='NUMBER',
+                        description='Confidence score for the thread (0.0-1.0)'
+                    )
+                },
+                required=['thread', 'confidence']
+            )
+        )
+        tools = [types.Tool(function_declarations=[function])]
+        tool_choice = {"type": "tool", "name": "return_golden_thread"}
+        resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=tool_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=2048, tools=tools, tool_choice=tool_choice)
             tool = self._extract_tool_call(resp)
         if tool is not None:
             try:
@@ -518,11 +529,11 @@ identify genuinely novel developments vs. variations on recurring themes."""
                 }
             }
         ]
-        forced_choice = {"type": "tool", "name": "return_delightful_surprise"}
-        resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
+        tool_choice = {"type": "tool", "name": "return_delightful_surprise"}
+        resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=tool_choice)
         tool = self._extract_tool_call(resp)
         if tool is None:
-            resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=4096, tools=tools, tool_choice=tool_choice)
             tool = self._extract_tool_call(resp)
         if tool is not None:
             try:
@@ -587,10 +598,10 @@ identify genuinely novel developments vs. variations on recurring themes."""
                 }
             }
         ]
-        forced_choice = {"type": "tool", "name": "return_summary"}
+        tool_choice = {"type": "tool", "name": "return_summary"}
 
         try:
-            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
 
             # Check if we got a text response instead of tool call (indicates error)
             text_response = self._extract_text_content(resp)
@@ -610,7 +621,7 @@ identify genuinely novel developments vs. variations on recurring themes."""
                     "CRITICAL: You MUST call the return_summary function with your summary and confidence."
                 )
                 messages[0]["content"] = enhanced_system
-                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
                 tool = self._extract_tool_call(resp)
 
             if tool is None:
@@ -953,18 +964,29 @@ Standard: Meaningful impact on community life.""",
             if tools:
                 function_declarations = []
                 for tool in tools:
-                    if tool.get("type") == "custom":
-                        # Convert custom tool to Gemini function declaration format using proper types
+                    # Handle both old dict format and new types.Tool format
+                    if isinstance(tool, types.Tool):
+                        # Tool is already in the new format, use it directly
+                        if not gemini_tools:
+                            gemini_tools = []
+                        gemini_tools.append(tool)
+                    elif isinstance(tool, dict) and tool.get("type") == "custom":
+                        # Convert old custom tool to Gemini function declaration format
                         function_declaration = types.FunctionDeclaration(
                             name=tool["name"],
                             description=tool["description"],
-                            parameters_json_schema=tool["input_schema"]  # Use parameters_json_schema instead
+                            parameters_json_schema=tool["input_schema"]
                         )
                         function_declarations.append(function_declaration)
 
+                # If we converted any old-format tools, create Tool objects for them
                 if function_declarations:
-                    # Create Tool with function declarations
-                    gemini_tools = [types.Tool(function_declarations=function_declarations)]
+                    if not gemini_tools:
+                        gemini_tools = []
+                    gemini_tools.append(types.Tool(function_declarations=function_declarations))
+
+                # Set tools and config if we have any tools
+                if gemini_tools:
                     config_params["tools"] = gemini_tools
 
                     # CRITICAL: Disable automatic function calling to get function_calls in response
@@ -976,10 +998,7 @@ Standard: Meaningful impact on community life.""",
                     if tool_choice and tool_choice.get("type") == "tool":
                         # Force function calling - use tool_config with ANY mode
                         config_params["tool_config"] = types.ToolConfig(
-                            function_calling_config=types.FunctionCallingConfig(
-                                mode="ANY",
-                                allowed_function_names=[tool_choice.get("name")]
-                            )
+                            function_calling_config=types.FunctionCallingConfig(mode="ANY")
                         )
 
             config = types.GenerateContentConfig(**config_params)
@@ -1089,10 +1108,17 @@ Standard: Meaningful impact on community life.""",
                             except Exception as e:
                                 self.logger.error(f"Failed to parse function call from candidate part: {e}")
 
-            # Check for text content
-            if hasattr(response, 'text') and response.text:
-                text_content = response.text
-            elif response.candidates and len(response.candidates) > 0:
+            # Check for text content - handle error when function call is present
+            try:
+                if hasattr(response, 'text') and response.text:
+                    text_content = response.text
+            except ValueError as e:
+                # When function calls are present, accessing response.text throws ValueError
+                self.logger.debug(f"Could not access response.text (function call present): {e}")
+                text_content = ""
+
+            # If no text content from response.text, try candidates
+            if not text_content and response.candidates and len(response.candidates) > 0:
                 candidate = response.candidates[0]
                 if (hasattr(candidate, 'content') and
                     candidate.content and
@@ -1250,72 +1276,33 @@ Standard: Meaningful impact on community life.""",
         return ""
 
     def _extract_tool_call(self, resp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract tool call from Google GenAI SDK response.
+        The _call_gemini method already correctly extracts function calls and puts them in resp["tool_calls"].
+        """
         # Log the response for debugging
-        self.logger.debug(f"Extracting tool call from response: {json.dumps(resp, indent=2)[:500]}...")
-        
-        # First check for direct tool_calls in our converted response
+        self.logger.debug(f"Extracting tool call from response...")
+
+        # Check for tool_calls in our properly structured response from _call_gemini
         if "tool_calls" in resp and isinstance(resp["tool_calls"], list) and resp["tool_calls"]:
-            self.logger.debug(f"Found direct tool_calls in response")
-            return resp["tool_calls"][0]
-        
+            tool_call = resp["tool_calls"][0]
+            self.logger.debug(f"Found tool call: {tool_call.get('function', {}).get('name', 'unknown')}")
+            return tool_call
+
+        # Fallback: Check choices format (compatibility)
         try:
             choices = resp.get("choices") or []
-            if not choices:
-                raise KeyError
-            msg = choices[0].get("message") or {}
-            calls = msg.get("tool_calls") or []
-            if calls:
-                self.logger.debug(f"Found tool call in choices: {calls[0]}")
-                return calls[0]
-        except Exception:
-            pass
+            if choices:
+                msg = choices[0].get("message") or {}
+                calls = msg.get("tool_calls") or []
+                if calls:
+                    self.logger.debug(f"Found tool call in choices: {calls[0].get('function', {}).get('name', 'unknown')}")
+                    return calls[0]
+        except Exception as e:
+            self.logger.debug(f"Error checking choices format: {e}")
 
-        # Alternative output array containing tool call blocks
-        try:
-            outputs = resp.get("output") or []
-            if outputs:
-                self.logger.debug(f"Checking output array for tool calls: {len(outputs)} items")
-            for block in outputs:
-                if not isinstance(block, dict):
-                    continue
-                btype = block.get("type")
-                self.logger.debug(f"Block type: {btype}")
-                # Direct tool block
-                if btype in ("tool_call", "tool_calls", "tool_use", "function_call"):
-                    func = block.get("function") or {}
-                    func_name = block.get("name") or block.get("tool_name") or func.get("name")
-                    func_args = block.get("arguments") or func.get("arguments") or block.get("input")
-                    if func_name:
-                        self.logger.debug(f"Found tool call: {func_name}")
-                        return {
-                            "type": "custom",
-                            "function": {
-                                "name": func_name,
-                                "arguments": func_args if isinstance(func_args, str) else json.dumps(func_args or {}),
-                            },
-                        }
-                # Message wrapper with content array containing tool blocks
-                if btype == "message":
-                    content_arr = block.get("content") or []
-                    for it in content_arr:
-                        if not isinstance(it, dict):
-                            continue
-                        it_type = it.get("type")
-                        if it_type in ("tool_call", "tool_calls", "tool_use", "function_call"):
-                            func = it.get("function") or {}
-                            func_name = it.get("name") or it.get("tool_name") or func.get("name")
-                            func_args = it.get("arguments") or func.get("arguments") or it.get("input")
-                            if func_name:
-                                return {
-                                    "type": "custom",
-                                    "function": {
-                                        "name": func_name,
-                                        "arguments": func_args if isinstance(func_args, str) else json.dumps(func_args or {}),
-                                    },
-                                }
-            return None
-        except Exception:
-            return None
+        self.logger.debug("No tool calls found in response")
+        return None
 
     async def generate_subject_line(self, newsletter_content: Dict[str, Any]) -> str:
         """
@@ -1347,23 +1334,24 @@ Standard: Meaningful impact on community life.""",
             messages = self._format_prompt("gpt5_subject_line", context)
 
             # Use tool-calling for reliable extraction
-            tools = [
-                {
-                    "type": "custom",
-                    "name": "return_subject",
-                    "description": "Return the email subject line summary",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "subject": {"type": "string"}
-                        },
-                        "required": ["subject"]
-                    }
-                }
-            ]
-            forced_choice = {"type": "tool", "name": "return_subject"}
+            function = types.FunctionDeclaration(
+                name="return_subject",
+                description="Return the email subject line summary",
+                parameters=types.Schema(
+                    type='OBJECT',
+                    properties={
+                        'subject': types.Schema(
+                            type='STRING',
+                            description='The email subject line'
+                        )
+                    },
+                    required=['subject']
+                )
+            )
+            tools = [types.Tool(function_declarations=[function])]
+            tool_choice = {"type": "tool", "name": "return_subject"}
 
-            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
 
             # Extract subject from tool call
             tool = self._extract_tool_call(resp)
@@ -1406,10 +1394,19 @@ Standard: Meaningful impact on community life.""",
         self.logger.debug(f"Newsletter content provided: {bool(newsletter_content)}")
         self.logger.debug(f"Golden thread provided: {bool(golden_thread)}")
         
-        # Build context with full newsletter content for contextual relevance
+        # Build context with simplified newsletter content (similar to subject line)
+        simplified_content = {}
+        if newsletter_content:
+            for section_name, section_data in newsletter_content.items():
+                if isinstance(section_data, list) and section_data:
+                    # Extract just the headlines for each section (first 2 items to keep context manageable)
+                    headlines = [item.get('headline', '') for item in section_data[:2] if item.get('headline')]
+                    if headlines:
+                        simplified_content[section_name] = headlines
+
         context = {
             "date_str": date_str,
-            "newsletter_content_json": json.dumps(newsletter_content or {}, ensure_ascii=False),
+            "newsletter_content_json": json.dumps(simplified_content, ensure_ascii=False),
             "golden_thread": golden_thread or "",
             "has_content": bool(newsletter_content)
         }
@@ -1421,25 +1418,33 @@ Standard: Meaningful impact on community life.""",
             self.logger.debug(f"Formatted prompt for greeting generation: {len(messages)} messages")
             
             # Use tool-calling pattern for more reliable response extraction
-            tools = [
-                {
-                    "type": "custom",
-                    "name": "return_greeting",
-                    "description": "Return the morning greeting",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "greeting": {"type": "string"}
-                        },
-                        "required": ["greeting"]
-                    }
-                }
-            ]
-            forced_choice = {"type": "tool", "name": "return_greeting"}
-            
-            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+            function = types.FunctionDeclaration(
+                name="return_greeting",
+                description="Return the morning greeting",
+                parameters=types.Schema(
+                    type='OBJECT',
+                    properties={
+                        'greeting': types.Schema(
+                            type='STRING',
+                            description='The morning greeting'
+                        )
+                    },
+                    required=['greeting']
+                )
+            )
+            tools = [types.Tool(function_declarations=[function])]
+            tool_choice = {"type": "tool", "name": "return_greeting"}
+
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
             self.logger.debug(f"GPT-5 response received: {type(resp)}")
-            
+
+            # Debug: Log the actual response structure for greeting
+            if 'choices' in resp and resp['choices']:
+                choice = resp['choices'][0]
+                if 'message' in choice:
+                    content = choice['message'].get('content', 'No content')
+                    self.logger.debug(f"Greeting response content: {content[:200]}...")
+
             # Extract greeting from tool call
             tool = self._extract_tool_call(resp)
             greeting = ""
@@ -1454,7 +1459,7 @@ Standard: Meaningful impact on community life.""",
             else:
                 # Retry once if tool extraction failed
                 self.logger.warning("No tool call found, retrying...")
-                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
                 tool = self._extract_tool_call(resp)
                 if tool:
                     try:
