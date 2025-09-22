@@ -231,50 +231,17 @@ gpt5_serendipity_engine:
 
 gpt5_morning_greeting:
   system: |
-    Creative greeting generator for Ignacio: start with "Good Morning Ignacio!" + motivational phrase + two sentences about today's news.
-    Be specific to today and do not duplicate the golden thread theme.
+    Morning greeting generator: start with "Good Morning Ignacio!" + motivational phrase + two sentences about today's news.
+    Keep under 200 characters total. Avoid duplicating golden thread theme.
     Call "return_greeting".
   template: |
-    Create morning greeting for {date_str} reflecting newsletter themes.
+    Create morning greeting for {date_str}.
 
-    CONTENT:
-    {newsletter_content_json}
+    CONTENT: {newsletter_content_json}
+    GOLDEN THREAD: {golden_thread}
 
-    GOLDEN THREAD (DO NOT duplicate this theme in greeting):
-    {golden_thread}
-
-    REQUIREMENTS:
-    - START with "Good Morning Ignacio!" followed by a short motivational phrase
-    - Then add 2 sentences about today's specific news
-    - TOTAL: Keep under 200 characters including the greeting
-    - Be specific with names, numbers, and concrete events
-    - DO NOT repeat or paraphrase the golden thread insight
-    - Focus on a DIFFERENT story from the golden thread
-    - Make it punchy and interesting
-
-    STRUCTURE: "Good Morning Ignacio! [Motivational phrase]. [News sentence 1]. [News sentence 2]."
-
-    Examples of GOOD greetings (follow this format):
-    - "Good Morning Ignacio! Time to make today count. The Fed paused rates at 5.5% while tech stocks surged 3%. Money stays expensive but optimism is cheap."
-    - "Good Morning Ignacio! Ready to crush your goals? Miami saved its night buses while Cornell secured $50M for quantum research. Investment beats abandonment today."
-    - "Good Morning Ignacio! Let's get after it. NVIDIA hit new highs as Congress debates chip subsidies. The future has a price tag attached."
-
-    MOTIVATIONAL PHRASE OPTIONS (choose one or create similar):
-    - "Time to make today count"
-    - "Ready to crush your goals?"
-    - "Let's make moves today"
-    - "Time to level up"
-    - "Ready to own this day?"
-    - "Let's get after it"
-    - "Time to execute"
-    - "Ready to make it happen?"
-    - "Let's dominate today"
-    - "Time to rise and grind"
-    - "Ready to build something great?"
-    - "Let's turn potential into progress"
-
-    Remember: The greeting should complement, not duplicate, the golden thread.
-    Keep it SHORT, PERSONAL, and COMPLETE!
+    Format: "Good Morning Ignacio! [Motivational phrase]. [News sentence]. [News sentence]."
+    Focus on different story from golden thread. Keep under 200 characters.
 
 gpt5_subject_line:
   system: |

@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import json
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+from google.genai import types
 from src.services.ai_service import AIService
 from src.services.summarization_service import SectionSummaries
 from src.pipeline.content_aggregator import Section
@@ -137,74 +139,92 @@ class SynthesisService:
         self.logger.debug(f"Sections being analyzed: {list(sections.keys())}")
         
         try:
-            # Use prompt pipeline for pattern synthesis
-            self.logger.debug("Calling AI service for pattern synthesis")
-            # Use higher token limit for complex pattern synthesis JSON response
-            resp = await self.ai.interact_with_gpt("gpt5_pattern_synthesis", context, max_tokens=8192)
-            
-            content = getattr(resp, "content", None)
-            self.logger.debug(f"AI response content type: {type(content)}")
-            
-            if isinstance(content, str) and content.strip():  # Check content is not empty
-                import json as _json
-                
-                # The AI returns valid JSON, so we just need to parse it directly
-                # No complex extraction needed - the extraction logic was actually breaking valid JSON
-                content_to_parse = content.strip()
-                
-                # Log the full response for debugging
-                self.logger.debug(f"AI response length: {len(content_to_parse)} characters")
-                if len(content_to_parse) > 1000:
-                    self.logger.debug(f"First 500 chars: {content_to_parse[:500]}")
-                    self.logger.debug(f"Last 500 chars: {content_to_parse[-500:]}")
-                else:
-                    self.logger.debug(f"Full response: {content_to_parse}")
-                
+            # Use tool calling for reliable pattern synthesis
+            self.logger.debug("Calling AI service for pattern synthesis using tool calling")
+
+            # Create function declaration for pattern synthesis
+            function = types.FunctionDeclaration(
+                name="return_patterns",
+                description="Return the analyzed patterns connecting news stories",
+                parameters=types.Schema(
+                    type='OBJECT',
+                    properties={
+                        'patterns': types.Schema(
+                            type='ARRAY',
+                            description='Array of patterns found in the news',
+                            items=types.Schema(
+                                type='OBJECT',
+                                properties={
+                                    'insight': types.Schema(
+                                        type='STRING',
+                                        description='The golden thread insight connecting stories'
+                                    ),
+                                    'confidence': types.Schema(
+                                        type='NUMBER',
+                                        description='Confidence score from 0.0 to 1.0'
+                                    ),
+                                    'sections': types.Schema(
+                                        type='ARRAY',
+                                        description='List of section names this pattern connects',
+                                        items=types.Schema(type='STRING')
+                                    ),
+                                    'key_stories': types.Schema(
+                                        type='ARRAY',
+                                        description='List of key story headlines that demonstrate this pattern',
+                                        items=types.Schema(type='STRING')
+                                    )
+                                },
+                                required=['insight', 'confidence', 'sections']
+                            )
+                        )
+                    },
+                    required=['patterns']
+                )
+            )
+
+            tools = [types.Tool(function_declarations=[function])]
+            tool_choice = {"type": "tool", "name": "return_patterns"}
+
+            # Format the prompt for pattern synthesis
+            messages = self.ai._format_prompt("gpt5_pattern_synthesis", context)
+
+            # Call Gemini with tool calling
+            resp = await self.ai._call_gemini(
+                messages=messages,
+                max_tokens=8192,
+                tools=tools,
+                tool_choice=tool_choice
+            )
+
+            # Extract patterns from tool call
+            tool = self.ai._extract_tool_call(resp)
+            if tool:
                 try:
-                    # Directly parse the JSON - the AI returns complete, valid JSON
-                    parsed = _json.loads(content_to_parse)
-                    patterns = list(parsed.get("patterns", []))
-                    self.logger.info(f"📊 Found {len(patterns)} potential patterns")
-                    
+                    args = json.loads(tool["function"]["arguments"]) or {}
+                    patterns = args.get("patterns", [])
+                    self.logger.info(f"📊 Found {len(patterns)} potential patterns via tool calling")
+
                     # Log pattern details for debugging
                     for i, pattern in enumerate(patterns):
-                        # Support 'insight' (newest), 'connection' (recent), or 'theme' (legacy)
-                        insight = pattern.get('insight') or pattern.get('connection') or pattern.get('theme', 'Unknown')
+                        insight = pattern.get('insight', 'Unknown')
                         confidence = pattern.get('confidence', 0)
-                        sections = pattern.get('sections', [])
-                        self.logger.debug(f"Pattern {i+1}: {insight} (confidence: {confidence:.2f}, sections: {sections})")
-                    
+                        sections_list = pattern.get('sections', [])
+                        self.logger.debug(f"Pattern {i+1}: {insight} (confidence: {confidence:.2f}, sections: {sections_list})")
+
                     # Filter for high-confidence patterns
                     high_confidence = [p for p in patterns if p.get('confidence', 0) >= 0.7]
                     if high_confidence:
                         self.logger.info(f"✨ {len(high_confidence)} high-confidence patterns (≥0.7) available for golden thread")
-                    
+
                     return patterns
-                    
-                except _json.JSONDecodeError as parse_error:
-                    # If JSON parsing fails, log detailed error information
-                    self.logger.error(f"❌ Failed to parse pattern synthesis JSON: {parse_error}")
-                    self.logger.error(f"Error at position {parse_error.pos}: {parse_error.msg}")
-                    
-                    # Show content around the error position
-                    if parse_error.pos:
-                        start = max(0, parse_error.pos - 100)
-                        end = min(len(content_to_parse), parse_error.pos + 100)
-                        self.logger.error(f"Content around error position {parse_error.pos}:")
-                        self.logger.error(f"  ...{content_to_parse[start:end]}...")
-                    
-                    # Log the raw content for debugging (truncated)
-                    self.logger.debug(f"Raw content (first 1000 chars): {content_to_parse[:1000]}")
-                    
+
+                except json.JSONDecodeError as parse_error:
+                    self.logger.error(f"❌ Failed to parse pattern tool call arguments: {parse_error}")
                     return []
             else:
-                if content is None:
-                    self.logger.warning("⚠️ AI returned None for pattern synthesis")
-                elif not content:
-                    self.logger.warning("⚠️ AI returned empty string for pattern synthesis")
-                else:
-                    self.logger.warning(f"⚠️ Unexpected content type from AI: {type(content)}")
+                self.logger.warning("⚠️ No tool call found in pattern synthesis response")
                 return []
+
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"💥 Pattern analysis failed: {e}")
             return []
