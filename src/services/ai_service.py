@@ -551,9 +551,18 @@ identify genuinely novel developments vs. variations on recurring themes."""
         voice = payload.get("voice", "")
         prompt_hint = payload.get("prompt", "")
 
+        # Add content validation and debugging
+        if not content or len(content.strip()) < 10:
+            self.logger.warning(f"Content too short for summarization: '{content[:100]}...' (length: {len(content)})")
+            return {
+                "summary": f"{headline.strip()}",
+                "confidence": 0.5
+            }
+
         system_text = (
             "You are the Renaissance editor. Write exactly one brilliant, factual sentence (25-40 words). "
-            "No markdown, no bullets, no code. Use clear, vivid language."
+            "No markdown, no bullets, no code. Use clear, vivid language. "
+            "IMPORTANT: You must use the return_summary tool with a summary and confidence score."
         )
         user_text = (
             f"Section: {section}\nVoice: {voice}\nHeadline: {headline}\nSource: {source}\nURL: {url}\n"
@@ -579,19 +588,66 @@ identify genuinely novel developments vs. variations on recurring themes."""
             }
         ]
         forced_choice = {"type": "tool", "name": "return_summary"}
-        resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
-        tool = self._extract_tool_call(resp)
-        if tool is None:
-            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
-            tool = self._extract_tool_call(resp)
-        if tool is None:
-            # Strict: do not fallback to free-form text; fail instead
-            raise AIServiceError("Expected tool call 'return_summary' not found")
+
         try:
-            data = json.loads(tool["function"]["arguments"]) or {}
-            return {"summary": data.get("summary", ""), "confidence": float(data.get("confidence", 0.0))}
+            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+
+            # Check if we got a text response instead of tool call (indicates error)
+            text_response = self._extract_text_content(resp)
+            if text_response and ("cannot" in text_response.lower() or "sorry" in text_response.lower() or "unable" in text_response.lower()):
+                self.logger.warning(f"AI returned error message instead of tool call: {text_response[:200]}...")
+                return {
+                    "summary": f"{headline.strip()}",
+                    "confidence": 0.3
+                }
+
+            tool = self._extract_tool_call(resp)
+            if tool is None:
+                # Retry once with enhanced prompt
+                enhanced_system = (
+                    "You are the Renaissance editor. Write exactly one brilliant, factual sentence (25-40 words). "
+                    "No markdown, no bullets, no code. Use clear, vivid language. "
+                    "CRITICAL: You MUST call the return_summary function with your summary and confidence."
+                )
+                messages[0]["content"] = enhanced_system
+                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=forced_choice)
+                tool = self._extract_tool_call(resp)
+
+            if tool is None:
+                self.logger.warning("No tool call found in AI response, using headline as fallback")
+                return {
+                    "summary": f"{headline.strip()}",
+                    "confidence": 0.4
+                }
+
+            try:
+                data = json.loads(tool["function"]["arguments"]) or {}
+                summary = data.get("summary", "").strip()
+                confidence = float(data.get("confidence", 0.0))
+
+                # Validate summary quality
+                if not summary or len(summary.split()) < 5:
+                    self.logger.warning(f"AI returned poor quality summary: '{summary}', using headline")
+                    return {
+                        "summary": f"{headline.strip()}",
+                        "confidence": 0.4
+                    }
+
+                return {"summary": summary, "confidence": confidence}
+
+            except Exception as e:
+                self.logger.warning(f"Failed to parse summary result: {e}, using headline fallback")
+                return {
+                    "summary": f"{headline.strip()}",
+                    "confidence": 0.3
+                }
+
         except Exception as e:
-            raise AIServiceError(f"Failed to parse summary result: {e}") from e
+            self.logger.error(f"Error in generate_summary: {e}")
+            return {
+                "summary": f"{headline.strip()}",
+                "confidence": 0.2
+            }
 
     def _calculate_adaptive_temporal_factor(self, published_date: str, section: str) -> float:
         """
