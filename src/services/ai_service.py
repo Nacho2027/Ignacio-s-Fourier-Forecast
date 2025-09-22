@@ -958,7 +958,7 @@ Standard: Meaningful impact on community life.""",
                         function_declaration = types.FunctionDeclaration(
                             name=tool["name"],
                             description=tool["description"],
-                            parameters=self._convert_json_schema_to_gemini_schema(tool["input_schema"])
+                            parameters_json_schema=tool["input_schema"]  # Use parameters_json_schema instead
                         )
                         function_declarations.append(function_declaration)
 
@@ -967,9 +967,14 @@ Standard: Meaningful impact on community life.""",
                     gemini_tools = [types.Tool(function_declarations=function_declarations)]
                     config_params["tools"] = gemini_tools
 
+                    # CRITICAL: Disable automatic function calling to get function_calls in response
+                    config_params["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    )
+
                     # Handle tool choice (function calling mode)
                     if tool_choice and tool_choice.get("type") == "tool":
-                        # Force function calling - use tool_config
+                        # Force function calling - use tool_config with ANY mode
                         config_params["tool_config"] = types.ToolConfig(
                             function_calling_config=types.FunctionCallingConfig(
                                 mode="ANY",
@@ -1004,8 +1009,18 @@ Standard: Meaningful impact on community life.""",
             text_content = ""
 
             # Check for function calls using the correct new SDK pattern
+            # Debug logging for response structure
+            self.logger.debug(f"Response has function_calls attribute: {hasattr(response, 'function_calls')}")
+            if hasattr(response, 'function_calls'):
+                self.logger.debug(f"Function calls found: {response.function_calls}")
+                self.logger.debug(f"Function calls type: {type(response.function_calls)}")
+                if response.function_calls:
+                    self.logger.debug(f"First function call: {response.function_calls[0]}")
+                    self.logger.debug(f"First function call type: {type(response.function_calls[0])}")
+
             # Handle both response.function_calls formats: FunctionCall objects vs wrapped objects
             if hasattr(response, 'function_calls') and response.function_calls:
+                self.logger.debug(f"Found {len(response.function_calls)} function calls in response")
                 for function_call_part in response.function_calls:
                     try:
                         # Check if this is a direct FunctionCall object or a wrapper
