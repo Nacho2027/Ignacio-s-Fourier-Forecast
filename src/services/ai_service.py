@@ -1281,7 +1281,7 @@ Standard: Meaningful impact on community life.""",
 
             # Check for text content - handle error when function call is present
             try:
-                if hasattr(response, 'text'):
+                if hasattr(response, 'text') and response.text:
                     text_content = response.text
             except ValueError as e:
                 # When function calls are present, accessing response.text throws ValueError
