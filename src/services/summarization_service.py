@@ -131,9 +131,14 @@ class SummarizationService:
         item: RankedItem,
         voice: EditorialVoice
     ) -> Summary:
+        # CRITICAL FIX: Check preserve_original flag first (for Exa Websets enrichment_summary)
+        # If preserve_original=True, skip AI summarization and preserve the original content
+        if item.preserve_original:
+            self.logger.info(f"Preserving original content for {item.headline[:50]}... (enrichment_summary or preserve_original flag)")
+            summary_text = item.summary_text
         # Check if this is a USCCB reading that should preserve its original content
         # Scripture section + USCCB source = preserve full text
-        if item.section == Section.SCRIPTURE and item.source == "USCCB Daily Readings":
+        elif item.section == Section.SCRIPTURE and item.source == "USCCB Daily Readings":
             # For USCCB readings, preserve the full original biblical text
             summary_text = item.summary_text
         else:
@@ -427,22 +432,28 @@ class SummarizationService:
         self,
         text: str
     ) -> List[str]:
-        """Split text into sentences, handling common abbreviations."""
+        """Split text into sentences, handling common abbreviations and middle initials."""
         if not text:
             return []
         
+        # CRITICAL FIX: Handle single-letter middle initials (e.g., "Peter E. Gordon")
+        # Replace middle initials with placeholder BEFORE splitting
+        text = re.sub(r'\b([A-Z])\.\s+([A-Z][a-z])', r'\1<MIDDLE_INITIAL>\2', text)
+        
         # Handle common abbreviations that shouldn't end sentences
-        text = re.sub(r'\b(Dr|Mr|Mrs|Ms|Prof|Sr|Jr)\.$', r'\1<DOT>', text)
-        text = re.sub(r'\b(Inc|Corp|Ltd|Co)\.$', r'\1<DOT>', text)
-        text = re.sub(r'\b(U\.S|U\.K|E\.U)\.$', r'\1<DOT>', text)
+        text = re.sub(r'\b(Dr|Mr|Mrs|Ms|Prof|Sr|Jr)\.\s+', r'\1<DOT> ', text)
+        text = re.sub(r'\b(Inc|Corp|Ltd|Co)\.\s+', r'\1<DOT> ', text)
+        text = re.sub(r'\b(U\.S|U\.K|E\.U)\.\s+', r'\1<DOT> ', text)
         
-        # Split on sentence endings
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        # Split on sentence endings (period/question/exclamation followed by space and capital)
+        # Only split if followed by capital letter (real sentence boundary)
+        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
         
-        # Restore dots in abbreviations
-        sentences = [s.replace('<DOT>', '.') for s in sentences if s.strip()]
+        # Restore middle initials and abbreviations
+        sentences = [s.replace('<MIDDLE_INITIAL>', '. ').replace('<DOT>', '.') for s in sentences if s.strip()]
         
-        return sentences
+        # Filter out empty sentences
+        return [s for s in sentences if s.strip()]
 
     def _assess_reading_level(
         self,

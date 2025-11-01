@@ -106,7 +106,20 @@ class DeduplicationService:
         # First, intra-section deduplication
         filtered: Dict[str, List[ContentItem]] = {}
         for section_name, items in sections.items():
-            filtered[section_name] = await self.deduplicate_items(items, section_name)
+            self.logger.info(f"🔍 Deduplicating section '{section_name}' ({len(items)} items)...")
+            try:
+                # Add timeout protection per section (10 minutes max per section)
+                filtered[section_name] = await asyncio.wait_for(
+                    self.deduplicate_items(items, section_name),
+                    timeout=600.0  # 10 minutes per section
+                )
+                self.logger.info(f"✅ Section '{section_name}' deduplication complete: {len(filtered[section_name])} items kept")
+            except asyncio.TimeoutError:
+                self.logger.error(f"❌ Section '{section_name}' deduplication TIMED OUT after 10 minutes - keeping all items")
+                filtered[section_name] = items  # Keep all items if timeout
+            except Exception as e:
+                self.logger.error(f"❌ Section '{section_name}' deduplication FAILED: {e} - keeping all items")
+                filtered[section_name] = items  # Keep all items if error
 
         # Then, cross-section pass (compare kept items across sections)
         filtered = await self.cross_section_deduplication(filtered)
@@ -338,9 +351,34 @@ class DeduplicationService:
                 }
             )
 
-        ai_decision = await self.ai.editorial_deduplication(
-            new_item=new_item_dict, similar_items=similar_items_dicts
-        )
+        # Call AI with timeout and error handling
+        try:
+            ai_decision = await asyncio.wait_for(
+                self.ai.editorial_deduplication(
+                    new_item=new_item_dict, similar_items=similar_items_dicts
+                ),
+                timeout=240.0  # 240 second (4 minute) timeout for editorial decision (includes retry)
+            )
+        except asyncio.TimeoutError:
+            self.logger.error(f"AI editorial decision timed out for item: {item.headline[:50]}...")
+            # Fallback: filter the item to be safe
+            return DeduplicationDecision(
+                action="filter",
+                confidence=0.5,
+                reasoning="AI decision timed out - filtering to be safe",
+                angle=None,
+                related_to=None,
+            )
+        except Exception as e:
+            self.logger.error(f"AI editorial decision failed for item: {item.headline[:50]}... Error: {e}")
+            # Fallback: filter the item to be safe
+            return DeduplicationDecision(
+                action="filter",
+                confidence=0.5,
+                reasoning=f"AI decision failed: {str(e)}",
+                angle=None,
+                related_to=None,
+            )
 
         # Enhanced decision with follow-up tracking
         decision = DeduplicationDecision(

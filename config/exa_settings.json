@@ -1,0 +1,13 @@
+{
+  "search_timeout_seconds": 900,
+  "max_retries": 3,
+  "retry_backoff_base": 2,
+  "parallel_search_execution": false,
+  "max_concurrent_websets": 3,
+  "use_native_deduplication": false,
+  "master_webset_enabled": false,
+  "csv_batch_size": 100,
+  "cleanup_websets_after_fetch": true,
+  "log_level": "INFO",
+  "enable_progress_logging": true
+}

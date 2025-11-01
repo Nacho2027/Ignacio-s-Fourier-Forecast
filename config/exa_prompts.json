@@ -1,0 +1,387 @@
+{
+  "websets": [
+    {
+      "name": "breaking_news",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 3,
+      "searches": [
+        {
+          "search": {
+            "query": "Major geopolitical developments affecting international relations, including policy changes by governments, central bank monetary policy decisions, diplomatic breakthroughs or conflicts, and economic events with multi-year structural implications for global markets and governance",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a major news publication (Reuters, Bloomberg, Financial Times, The Economist, WSJ, NYT, WaPo, etc.)"
+            },
+            {
+              "description": "Article is a complete news story, not a homepage or aggregation page"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Breaking news on global security threats, sovereign debt crises, major regulatory changes affecting multiple industries, international trade agreements or disputes, and significant shifts in geopolitical power dynamics between nations or regions",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a major foreign affairs or economic policy publication (Foreign Affairs, The Economist, FT, Bloomberg, etc.)"
+            },
+            {
+              "description": "Article is a complete news story, not a homepage or brief update"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "business",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 3,
+      "searches": [
+        {
+          "search": {
+            "query": "Major corporate deals, executive leadership changes at large companies, business strategy changes, and industry transformations",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a business or financial news publication (Bloomberg, FT, The Information, Axios, WSJ, etc.)"
+            },
+            {
+              "description": "Article is a complete business story, not a homepage or brief update"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Investment opportunities in emerging markets, unconventional investment strategies, market trends from economic changes, regulatory developments, and technology disruptions",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a business or financial news publication (Bloomberg, FT, The Information, Barron's, WSJ, etc.)"
+            },
+            {
+              "description": "Article is a complete business story, not a homepage or market summary"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Financial market infrastructure, investor behavior trends, corporate financing with IPOs and bond offerings, market structure changes, and global investment shifts",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a business or financial news publication (Bloomberg, FT, The Economist, WSJ, etc.)"
+            },
+            {
+              "description": "Article is a complete business story, not a homepage or brief update"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tech_science",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 3,
+      "searches": [
+        {
+          "search": {
+            "query": "Breakthrough discoveries in computer science including novel algorithms and data structures, advances in electrical engineering and chip design, experimental validation of theoretical physics predictions, methodological innovations in applied mathematics, and fundamental advances in scientific computing or simulation techniques",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a scientific or technical publication (Nature, Science, Quanta Magazine, IEEE Spectrum, Ars Technica, etc.)"
+            },
+            {
+              "description": "Article is a complete technical story, not a homepage or press release"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Major developments in quantum computing hardware and algorithms, next-generation chip architectures pushing Moore's Law limits, software engineering paradigm shifts affecting how systems are built, fundamental physics experiments testing the Standard Model or general relativity, and advances in semiconductor manufacturing or materials science",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a scientific or technical publication (Nature, Science, IEEE, ACM, Ars Technica, etc.)"
+            },
+            {
+              "description": "Article is a complete technical story, not a homepage or vendor announcement"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Interdisciplinary STEM research combining biology and computing, quantum materials with novel electronic or optical properties, neuromorphic engineering mimicking brain architecture, computational biology revealing biological mechanisms, and paradigm-shifting discoveries that bridge multiple scientific disciplines",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a scientific or technical publication (Nature, Science, Quanta Magazine, etc.)"
+            },
+            {
+              "description": "Article is a complete technical story, not a homepage or summary page"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "research_papers",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 5,
+      "searches": [
+        {
+          "search": {
+            "query": "Research papers introducing novel neural network architectures for machine learning, transformer models with attention mechanisms, or breakthrough algorithms in artificial intelligence and deep learning",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is a research paper from arXiv.org, Nature.com, or Science.org"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Research papers on quantum computing algorithms, quantum mechanics experiments, or condensed matter physics revealing new material properties",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is a research paper from arXiv.org, Nature.com, Science.org, or Physical Review journals"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Research papers developing novel pricing models for quantitative finance, risk management techniques, or algorithmic trading strategies with theoretical foundations",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is a research paper from arXiv.org, SSRN.com, or peer-reviewed finance journals"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Research papers proposing paradigm shifts in scientific methodology, interdisciplinary STEM research combining multiple fields, or breakthrough discoveries challenging existing theoretical frameworks",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is a research paper from arXiv.org, Nature.com, Science.org, or peer-reviewed journals"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "politics",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 2,
+      "searches": [
+        {
+          "search": {
+            "query": "Major federal legislation being debated or passed in Congress, Supreme Court rulings with nationwide implications for constitutional law or civil rights, executive orders changing federal policy, regulatory changes by agencies affecting multiple industries, and congressional actions on appropriations or oversight with long-term governance impact",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a major political news publication (AP, Reuters, NPR, PBS, The Hill, Politico, etc.)"
+            },
+            {
+              "description": "Article is a complete political news story, not a homepage or opinion column"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Federal budget negotiations affecting government operations or entitlement programs, national security policy changes in defense or intelligence, agency leadership appointments requiring Senate confirmation, bipartisan legislative initiatives addressing major policy challenges, and institutional reforms affecting how government operates",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a major political news publication (AP, Reuters, NPR, The Hill, Politico, etc.)"
+            },
+            {
+              "description": "Article is a complete political news story, not a homepage or summary page"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "miscellaneous",
+      "entity": {
+        "type": "article"
+      },
+      "target_count": 5,
+      "searches": [
+        {
+          "search": {
+            "query": "Deep philosophical essays exploring human nature and consciousness, cognitive science research revealing how minds work, psychological studies on decision-making and behavior, neuroscience discoveries about brain function, sociological analysis of social dynamics and cultural change, and interdisciplinary perspectives on what makes us human",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from an intellectual publication (The New Yorker, The Atlantic, Harper's, Aeon, etc.)"
+            },
+            {
+              "description": "Article is a complete essay or feature, not a homepage or book review"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Cultural criticism examining contemporary society and values, intellectual history tracing the evolution of ideas, economic theory challenging conventional wisdom, literary analysis of significant works, film criticism exploring cinematic art, historical analysis revealing patterns across time, and interdisciplinary perspectives bridging humanities and sciences",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from an intellectual publication (The New Yorker, The Atlantic, Harper's, Aeon, etc.)"
+            },
+            {
+              "description": "Article is a complete essay or feature, not a homepage or summary page"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Innovative architecture projects pushing design boundaries, urban design solutions addressing city challenges, design theory exploring the relationship between form and function, fashion as cultural expression and art, art history revealing how visual culture shapes society, aesthetic philosophy examining beauty and meaning, and human-centered design improving lived experience",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from an intellectual or design publication (Dezeen, Architectural Digest, The New Yorker, etc.)"
+            },
+            {
+              "description": "Article is a complete essay or feature, not a homepage or summary page"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Historical analysis revealing patterns across civilizations and eras, intellectual history tracing the evolution of philosophical and scientific ideas, biographical essays on influential thinkers and their impact, historiography examining how we understand and interpret the past, and interdisciplinary perspectives connecting history with contemporary challenges",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from an intellectual publication (The New Yorker, The Atlantic, Harper's, Aeon, London Review of Books, etc.)"
+            },
+            {
+              "description": "Article is a complete essay or feature, not a homepage or book review"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        },
+        {
+          "search": {
+            "query": "Evidence-based health insights backed by rigorous research, human performance and longevity studies, nutrition science challenging conventional wisdom, physiological mechanisms underlying health and disease, and interdisciplinary perspectives connecting health with psychology, sociology, and philosophy",
+            "entity": {
+              "type": "article"
+            },
+            "count": 10
+          },
+          "criteria": [
+            {
+              "description": "Article is from a scientifically rigorous publication (Nature, Science, The Atlantic, The New Yorker, etc.)"
+            },
+            {
+              "description": "Article is a complete evidence-based story, not a homepage or product promotion"
+            },
+            {
+              "description": "Article is written in English"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

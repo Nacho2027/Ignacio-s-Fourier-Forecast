@@ -1,0 +1,37 @@
+{
+  "breaking_news": {
+    "min_items": 3,
+    "max_age_days": 2,
+    "fallback_query": "breaking news past 24 hours site:reuters.com OR site:apnews.com OR site:bbc.com OR site:bloomberg.com OR site:ft.com OR site:wsj.com OR site:cnbc.com"
+  },
+  "business": {
+    "min_items": 3,
+    "max_age_days": 3,
+    "fallback_query": "markets economy business past 48 hours site:reuters.com OR site:bloomberg.com OR site:ft.com OR site:wsj.com OR site:cnbc.com OR site:apnews.com"
+  },
+  "tech_science": {
+    "min_items": 3,
+    "max_age_days": 14,
+    "fallback_query": "technology science breakthroughs past week site:arstechnica.com OR site:theverge.com OR site:techcrunch.com OR site:wired.com OR site:technologyreview.com"
+  },
+  "politics": {
+    "min_items": 2,
+    "max_age_days": 3,
+    "fallback_query": "politics policy government past 48 hours site:reuters.com OR site:apnews.com OR site:bbc.com OR site:npr.org OR site:propublica.org"
+  },
+  "startup": {
+    "min_items": 2,
+    "max_age_days": 14,
+    "fallback_query": "startup funding launch product update past 14 days site:techcrunch.com OR site:theinformation.com OR site:wsj.com OR site:ft.com"
+  },
+  "miscellaneous": {
+    "min_items": 5,
+    "max_age_days": 21,
+    "fallback_query": "long-form essay analysis culture philosophy past 2 weeks site:theatlantic.com OR site:newyorker.com OR site:aeon.co OR site:lrb.co.uk OR site:nautilus.us"
+  },
+  "research_papers": {
+    "min_items": 5,
+    "max_age_days": 10
+  }
+}
+

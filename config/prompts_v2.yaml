@@ -180,39 +180,83 @@ gpt5_renaissance_summary:
 
 gpt5_golden_thread:
   system: |
-    Pattern recognition specialist finding genuine, non-obvious connections.
-    Only return a thread if confidence ≥0.75. Use concrete proper nouns, numbers,
-    and cite specific story names. Focus on what it means and why it matters now.
+    Pattern recognition specialist finding genuine, non-obvious connections that extract SIGNAL from NOISE.
+    Only return a thread if confidence ≥0.75 - prioritize authenticity over formulaic requirements.
+    Focus on real, observable patterns grounded in specific stories.
     Call "return_golden_thread".
   template: |
     Find connecting themes across all sections:
     {all_content_json}
 
-    REQUIREMENTS:
-    - MUST cite specific stories/headlines from today's newsletter BY NAME
-    - Connect 2-3 concrete events with a clear, observable pattern
-    - Focus on "what this means" not abstract philosophy
-    - Use specific names, companies, countries, technologies, numbers
-    - Show cause-effect or parallel patterns across domains
-    - Make the pattern actionable or predictive
-    - Create a 1-2 sentence insight that naturally flows (keep it SHORT and PUNCHY)
-    - REQUIRED: Include at least 3-4 proper nouns (company/person/place names)
+    CORE MISSION: Extract SIGNAL from NOISE
+    - SIGNAL: Genuine patterns revealing underlying mechanisms, actionable insights, predictive angles
+    - NOISE: Abstract philosophy, forced metaphors, obvious observations, vague generalizations
 
-    EXCELLENT golden threads (specific and concrete):
-    - "Miami preserves bus routes while Cornell expands research funding: local institutions choose investment over austerity as federal policy shifts loom."
-    - "OpenAI's o3 costs $1000/task while Miami's bus service costs $2/ride: the price gap between AI and human infrastructure reveals our investment priorities."
-    - "Fed holds rates at 5% while venture capital drops 40%: the cost of money shapes which innovations survive."
+    GUIDING PRINCIPLES (Quality over Formula):
 
-    BAD golden threads (vague and abstract):
-    - "From quantum memory to panic attacks, chaos brings clarity" (too abstract)
-    - "Today's breakthroughs share a paradox" (which breakthroughs? what paradox?)
-    - "Systems designed for purity meet messy reality" (which systems? what reality?)
-    - "The most elegant solutions require complex choreography" (meaningless without specifics)
+    1. AUTHENTICITY FIRST
+       - Only connect stories if the pattern is genuinely observable and meaningful
+       - A real insight with concrete proper nouns beats a forced connection
+       - If no authentic pattern emerges, return null - don't force it
 
-    CRITICAL: The reader should understand the pattern from the thread alone.
-    Include specific references: WHO is doing WHAT and WHY it matters.
+    2. CONCRETE GROUNDING (CRITICAL - MUST CITE 3-4 SPECIFIC ARTICLES)
+       - Reference at least 3-4 specific stories from today's newsletter by name, topic, or clear description
+       - Use concrete examples (companies, people, places, events, numbers) to illustrate the pattern
+       - Ground abstract concepts in real-world specifics from the actual articles
+       - Example: "The Nature paper on time crystals, combined with the arXiv research on Dreamer 4's world models..."
 
-    Return: thread (or null if confidence <0.75), confidence score.
+    3. SIGNAL EXTRACTION
+       - Reveal non-obvious connections the reader wouldn't see from individual stories
+       - Show underlying mechanisms, parallel patterns, or cause-effect relationships
+       - Focus on "what this means" with predictive or actionable angles
+       - Provide specific predictions or actionable insights, not vague observations
+
+    4. DEPTH AND SUBSTANCE (CRITICAL - LENGTH REQUIREMENT)
+       - 150-200 words (4-6 sentences) - SUBSTANTIAL and INSIGHTFUL
+       - The reader should understand the pattern AND its implications from the thread alone
+       - Avoid jargon, forced metaphors, and philosophical abstraction
+       - Each sentence should add new information or insight, not repeat the same idea
+
+    EXCELLENT golden threads (authentic, grounded, insightful, 150-200 words):
+
+    Example 1 (cites 4 articles, concrete details, actionable insight):
+    "The Nature paper on continuous time crystals that break temporal symmetry, combined with the arXiv research on Dreamer 4's world models enabling agents to train entirely in simulated environments, and the DeepMind meta-learning RL algorithms that discover their own learning procedures, reveals a fundamental convergence: we're moving from discovering physical laws to composing new realities. Whether in quantum matter (time crystals that violate thermodynamic equilibrium), simulated environments (agents that never touch real-world data), or algorithmic intelligence (RL systems that invent their own optimization strategies), the pattern is identical—generative composition replacing empirical observation. This shift has profound implications: by 2026, the most valuable scientific breakthroughs will likely come not from observing nature but from creating entirely new states, systems, and intelligences that don't exist in the natural world. The research funding trends in today's Business section support this: venture capital is flowing toward synthetic biology and AI model development, not traditional empirical science."
+
+    Example 2 (cites 3 articles, specific numbers, predictive analysis):
+    "OpenAI's o3 model costs $1,000 per task while Miami's bus service costs $2 per ride, and NVIDIA's H100 chips sell for $30,000 while Taiwan's TSMC expands Arizona fab capacity at $40 billion—these price points reveal a critical divergence in infrastructure investment. The cost gap between AI computation and human-scale infrastructure (500:1 ratio) shows where capital is flowing: toward digital intelligence, not physical mobility or manufacturing resilience. This creates a vulnerability: as the Fed holds rates at 5% (mentioned in today's Politics section), the high cost of capital will accelerate this divergence, making AI infrastructure relatively cheaper than physical infrastructure. By 2025, expect cities to face a choice: invest in expensive physical upgrades or deploy cheaper AI-powered optimization of existing systems. The semiconductor supply chain fragmentation (TSMC's Arizona move) suggests this isn't just about efficiency—it's about geopolitical control of the infrastructure that matters most."
+
+    BAD golden threads (too short, vague, or abstract):
+    - "From quantum memory to panic attacks, chaos brings clarity" (too abstract, no grounding, too short)
+    - "Today's breakthroughs share a paradox" (which breakthroughs? what paradox? meaningless, way too short)
+    - "Systems designed for purity meet messy reality" (which systems? what reality? no specifics, too short)
+    - "The most elegant solutions require complex choreography" (forced metaphor, no examples, too short)
+    - "Miami preserves bus routes while Cornell expands research funding: local institutions choose investment over austerity as federal policy shifts loom." (good insight but TOO SHORT - needs 3-4x more detail and depth)
+
+    CRITICAL REQUIREMENTS (ENFORCED):
+    - Length: 150-200 words (4-6 sentences) - NOT 50 words, NOT 2 sentences, NOT one paragraph
+    - MINIMUM: 400 characters, 150 words, 4 sentences - reject anything shorter
+    - Citations: At least 3-4 specific articles by name/topic with concrete details
+    - Concrete details: Proper nouns, numbers, specific concepts from actual articles
+    - Actionable insight: Predictions, implications, "what this means" for the reader
+    - Non-obvious connections: Cross-domain patterns the reader wouldn't see individually
+    - Structure: Each sentence must add NEW information or insight (no repetition)
+
+    VALIDATION CHECKLIST (before returning):
+    1. Is the thread at least 150 words / 400 characters? If NO, expand it.
+    2. Does it cite 3-4 specific articles by name/topic? If NO, add citations.
+    3. Does it use concrete proper nouns, numbers, or specific details? If NO, add them.
+    4. Does it reveal a non-obvious connection the reader wouldn't see? If NO, find deeper pattern.
+    5. Does each sentence add new information (not repeating same idea)? If NO, rewrite.
+    6. Does it explain "what this means" with predictions or implications? If NO, add this.
+
+    CRITICAL: If the thread is shorter than 150 words / 400 characters, you MUST expand it to meet the requirement.
+    DO NOT return a short thread - always ensure it meets the minimum length requirement.
+
+    CRITICAL QUESTION: Is this a genuine, observable pattern that reveals something meaningful?
+    If yes and confidence ≥0.75 AND length ≥150 words, return the thread. 
+    If no, uncertain, or too short, return null.
+
+    Return: thread (or null if confidence <0.75 or length <150 words), confidence score.
 
 gpt5_serendipity_engine:
   system: |
@@ -356,8 +400,10 @@ gpt5_pattern_synthesis:
     - DO NOT wrap response in ``` or any other formatting
 
 parameters:
-  claude:
-    model: claude-sonnet-4-20250514
+  openrouter:
+    model: "google/gemini-2.5-flash"  # Default model, can be overridden by OPENROUTER_MODEL env var
+    fallback_models:
+      - "openai/gpt-5-mini"
   temperatures:
     ranking: 0.3
     deduplication: 0.3

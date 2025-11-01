@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from google import genai
 from google.genai import types
 
@@ -488,6 +488,29 @@ identify genuinely novel developments vs. variations on recurring themes."""
                 data = json.loads(tool["function"]["arguments"]) or {}
                 thread = data.get("thread")
                 confidence = float(data.get("confidence", 0))
+
+                # CRITICAL: Validate Golden Thread length (must be 150-200 words / 400+ chars)
+                if thread:
+                    thread_length = len(thread)
+                    word_count = len(thread.split())
+
+                    # STRICT REJECTION: Threads shorter than 400 chars are rejected entirely
+                    if thread_length < 400:  # ~150 words minimum
+                        self.logger.error(
+                            f"❌ Golden Thread REJECTED: {thread_length} chars ({word_count} words). "
+                            f"Required: 400+ chars (150-200 words). "
+                            f"This is too short to provide genuine signal extraction."
+                        )
+                        return None  # Reject short threads completely
+                    elif thread_length < 600:  # ~200 words target
+                        self.logger.info(
+                            f"✅ Golden Thread length acceptable: {thread_length} chars ({word_count} words)"
+                        )
+                    else:
+                        self.logger.info(
+                            f"✅ Golden Thread length excellent: {thread_length} chars ({word_count} words)"
+                        )
+
                 return thread if (thread and confidence >= 0.7) else None
             except Exception:
                 return None
@@ -497,7 +520,31 @@ identify genuinely novel developments vs. variations on recurring themes."""
             data = json.loads(text_content) if text_content else {}
             thread = data.get("thread")
             confidence = float(data.get("confidence", 0))
-            return thread if (thread and confidence >= 0.7) else None
+
+            # CRITICAL: Validate Golden Thread length (must be 150-200 words / 400+ chars)
+            if thread:
+                thread_length = len(thread)
+                word_count = len(thread.split())
+
+                # STRICT REJECTION: Threads shorter than 400 chars are rejected entirely
+                if thread_length < 400:  # ~150 words minimum
+                    self.logger.error(
+                        f"❌ Golden Thread REJECTED: {thread_length} chars ({word_count} words). "
+                        f"Required: 400+ chars (150-200 words). "
+                        f"This is too short to provide genuine signal extraction."
+                    )
+                    return None  # Reject short threads completely
+                elif thread_length < 600:  # ~200 words minimum
+                    self.logger.info(
+                        f"✅ Golden Thread length acceptable: {thread_length} chars ({word_count} words)"
+                    )
+                else:
+                    self.logger.info(
+                        f"✅ Golden Thread length excellent: {thread_length} chars ({word_count} words)"
+                    )
+
+            # Enforce higher bar to avoid forced, low-quality threads
+            return thread if (thread and confidence >= 0.8) else None
         except Exception:
             return None
 
@@ -552,7 +599,7 @@ identify genuinely novel developments vs. variations on recurring themes."""
         """
         Generate a one-sentence summary with confidence via tool-calling.
         Expects payload containing: headline, content, url, source, section, voice, constraints, prompt
-        Returns: {"summary": str, "confidence": float}
+        Returns: {"summary": str, "confidence": float, "content_quality": Dict, "generation_mode": str}
         """
         headline = payload.get("headline", "")
         content = payload.get("content", "")
@@ -562,22 +609,28 @@ identify genuinely novel developments vs. variations on recurring themes."""
         voice = payload.get("voice", "")
         prompt_hint = payload.get("prompt", "")
 
-        # Add content validation and debugging
-        if not content or len(content.strip()) < 10:
-            self.logger.warning(f"Content too short for summarization: '{content[:100]}...' (length: {len(content)})")
-            return {
-                "summary": f"{headline.strip()}",
-                "confidence": 0.5
-            }
+        # Content Quality Assessment
+        content_quality = self._assess_content_quality(headline, content, source)
 
-        system_text = (
-            "You are the Renaissance editor. Write exactly one brilliant, factual sentence (25-40 words). "
-            "No markdown, no bullets, no code. Use clear, vivid language. "
-            "IMPORTANT: You must use the return_summary tool with a summary and confidence score."
-        )
-        user_text = (
-            f"Section: {section}\nVoice: {voice}\nHeadline: {headline}\nSource: {source}\nURL: {url}\n"
-            f"Content:\n{content}\n\nConstraints: sentence=true, words=25-40. {prompt_hint}"
+        # Enhanced logging with quality metrics
+        self.logger.info(f"📊 Summary generation for: {headline[:50]}... (source: {source})")
+        self.logger.info(f"📊 Content Quality: {content_quality['quality_category']} - "
+                        f"Content: {len(content)} chars, Headline: {len(headline)} chars, "
+                        f"Ratio: {content_quality['content_to_headline_ratio']:.1f}")
+
+        content = content.strip()
+
+        # Determine generation mode and content processing
+        generation_mode, processed_content = self._determine_generation_mode(headline, content, content_quality)
+
+        self.logger.info(f"🎯 Generation mode: {generation_mode}")
+
+        # Log content quality statistics for tracking
+        self._log_content_quality_stats(content_quality, generation_mode, source, section)
+
+        # Generate prompts based on determined mode
+        system_text, user_text = self._generate_mode_specific_prompts(
+            generation_mode, headline, processed_content, source, url, section, voice, prompt_hint
         )
         messages = [
             {"role": "system", "content": system_text},
@@ -600,65 +653,176 @@ identify genuinely novel developments vs. variations on recurring themes."""
         ]
         tool_choice = {"type": "tool", "name": "return_summary"}
 
-        try:
-            resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
-
-            # Check if we got a text response instead of tool call (indicates error)
-            text_response = self._extract_text_content(resp)
-            if text_response and ("cannot" in text_response.lower() or "sorry" in text_response.lower() or "unable" in text_response.lower()):
-                self.logger.warning(f"AI returned error message instead of tool call: {text_response[:200]}...")
-                return {
-                    "summary": f"{headline.strip()}",
-                    "confidence": 0.3
-                }
-
-            tool = self._extract_tool_call(resp)
-            if tool is None:
-                # Retry once with enhanced prompt
-                enhanced_system = (
-                    "You are the Renaissance editor. Write exactly one brilliant, factual sentence (25-40 words). "
-                    "No markdown, no bullets, no code. Use clear, vivid language. "
-                    "CRITICAL: You MUST call the return_summary function with your summary and confidence."
-                )
-                messages[0]["content"] = enhanced_system
-                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
-                tool = self._extract_tool_call(resp)
-
-            if tool is None:
-                self.logger.warning("No tool call found in AI response, using headline as fallback")
-                return {
-                    "summary": f"{headline.strip()}",
-                    "confidence": 0.4
-                }
-
+        # Try AI generation with multiple fallback strategies
+        for attempt in range(3):  # Up to 3 attempts
             try:
-                data = json.loads(tool["function"]["arguments"]) or {}
-                summary = data.get("summary", "").strip()
-                confidence = float(data.get("confidence", 0.0))
+                self.logger.debug(f"Summary generation attempt {attempt + 1} for: {headline[:30]}...")
 
-                # Validate summary quality
-                if not summary or len(summary.split()) < 5:
-                    self.logger.warning(f"AI returned poor quality summary: '{summary}', using headline")
-                    return {
-                        "summary": f"{headline.strip()}",
-                        "confidence": 0.4
-                    }
+                resp = await self._call_gemini(messages=messages, max_tokens=1024, tools=tools, tool_choice=tool_choice)
 
-                return {"summary": summary, "confidence": confidence}
+                # Log the response structure for debugging
+                self.logger.debug(f"AI response keys: {list(resp.keys()) if isinstance(resp, dict) else 'Not a dict'}")
+
+                # Check if we got a text response instead of tool call (indicates error)
+                text_response = self._extract_text_content(resp)
+                if text_response and any(error_word in text_response.lower() for error_word in ["cannot", "sorry", "unable", "error"]):
+                    self.logger.warning(f"AI returned error message: {text_response[:200]}...")
+                    if attempt < 2:  # Try again on first two attempts
+                        continue
+                    return self._create_fallback_summary(headline, "AI declined to summarize", 0.3)
+
+                tool = self._extract_tool_call(resp)
+                if tool is None:
+                    self.logger.warning(f"No tool call found in attempt {attempt + 1}")
+                    if attempt == 0:
+                        # First retry with enhanced prompt
+                        enhanced_system = (
+                            "You are the Renaissance editor. Write exactly one brilliant, factual sentence (25-40 words). "
+                            "No markdown, no bullets, no code. Use clear, vivid language. "
+                            "CRITICAL: You MUST call the return_summary function with your summary and confidence."
+                        )
+                        messages[0]["content"] = enhanced_system
+                        continue
+                    elif attempt == 1:
+                        # Second retry with simpler prompt
+                        messages[0]["content"] = "Create a concise one-sentence summary. Use the return_summary function."
+                        messages[1]["content"] = f"Summarize: {headline}\n\nContent: {content[:500]}..."
+                        continue
+                    else:
+                        # Final attempt failed
+                        self.logger.error("All attempts to get tool call failed")
+                        return self._create_fallback_summary(headline, "Tool call extraction failed", 0.2)
+
+                # Successfully got a tool call, try to parse it
+                try:
+                    data = json.loads(tool["function"]["arguments"]) or {}
+                    summary = data.get("summary", "").strip()
+                    confidence = float(data.get("confidence", 0.0))
+
+                    # Validate summary quality
+                    if not summary:
+                        self.logger.warning(f"AI returned empty summary")
+                        if attempt < 2:
+                            continue
+                        return self._create_fallback_summary(headline, "Empty AI response", 0.3)
+
+                    if len(summary.split()) < 3:
+                        self.logger.warning(f"AI returned very short summary: '{summary}'")
+                        if attempt < 2:
+                            continue
+                        return self._create_fallback_summary(headline, "AI summary too short", 0.4)
+
+                    # CRITICAL: Ensure summary is complete and not truncated
+                    # Check for common truncation patterns
+                    if summary.endswith('...') or summary.endswith('…'):
+                        self.logger.warning(f"Summary appears truncated: {summary}")
+                    
+                    # Ensure summary doesn't get cut off mid-sentence
+                    if len(summary.split()) < 5:
+                        self.logger.warning(f"Summary suspiciously short ({len(summary.split())} words): {summary}")
+                    
+                    # Success! Return the generated summary with quality metrics
+                    # Adjust confidence based on generation mode and content quality
+                    final_confidence = self._calculate_final_confidence(
+                        confidence, generation_mode, content_quality, len(summary.split())
+                    )
+
+                    # Validate summary quality
+                    summary_validation = self._validate_summary_quality(summary, headline, generation_mode)
+
+                    self.logger.info(f"✅ Generated {generation_mode} summary: {summary[:100]}... "
+                                   f"(confidence: {final_confidence:.2f}, validation: {summary_validation['quality_score']:.2f}, length: {len(summary)} chars)")
+
+                    return self._create_enhanced_response(
+                        summary, final_confidence, content_quality, generation_mode, summary_validation
+                    )
+
+                except Exception as e:
+                    self.logger.warning(f"Failed to parse summary result on attempt {attempt + 1}: {e}")
+                    if attempt < 2:
+                        continue
+                    return self._create_fallback_summary(headline, "Failed to parse AI response", 0.3)
 
             except Exception as e:
-                self.logger.warning(f"Failed to parse summary result: {e}, using headline fallback")
-                return {
-                    "summary": f"{headline.strip()}",
-                    "confidence": 0.3
-                }
+                self.logger.error(f"Error in generate_summary attempt {attempt + 1}: {e}")
+                if attempt < 2:
+                    continue
+                return self._create_fallback_summary(headline, f"AI service error: {str(e)[:50]}", 0.2)
 
-        except Exception as e:
-            self.logger.error(f"Error in generate_summary: {e}")
-            return {
-                "summary": f"{headline.strip()}",
-                "confidence": 0.2
+        # Should never reach here, but just in case
+        fallback_reason = "All attempts exhausted"
+        fallback_confidence = 0.1 if generation_mode == "content_based" else 0.5
+        return self._create_fallback_summary(headline, fallback_reason, fallback_confidence)
+
+    def _create_enhanced_response(self, summary: str, confidence: float,
+                                content_quality: Dict[str, Any], generation_mode: str,
+                                summary_validation: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a standardized enhanced response with all fields."""
+        return {
+            "summary": summary,                        # Core field - always present
+            "confidence": confidence,                  # Core field - always present
+            "content_quality": content_quality or {},  # Enhancement - optional
+            "generation_mode": generation_mode or "unknown",  # Enhancement - optional
+            "summary_validation": summary_validation or {}  # Enhancement - optional
+        }
+
+    def _create_fallback_summary(self, headline: str, reason: str, confidence: float,
+                                content_quality: Dict[str, Any] = None, generation_mode: str = "fallback") -> Dict[str, Any]:
+        """
+        Create a fallback summary when AI generation fails.
+
+        Args:
+            headline: The article headline
+            reason: Why we're falling back (for logging)
+            confidence: Confidence score for the fallback
+            content_quality: Content quality assessment
+            generation_mode: The attempted generation mode
+
+        Returns:
+            Dict with summary, confidence, and quality metrics
+        """
+        # Clean up the headline for use as a summary
+        clean_headline = headline.strip()
+        if not clean_headline:
+            clean_headline = "Article summary unavailable"
+
+        # Create a more informative fallback than just the headline
+        # Try to make it sound like a proper summary sentence
+        if len(clean_headline.split()) <= 3:
+            # Very short headline, add some context
+            fallback_summary = f"{clean_headline}."
+        elif clean_headline.endswith('.'):
+            # Already ends with period
+            fallback_summary = clean_headline
+        else:
+            # Add period to make it a complete sentence
+            fallback_summary = f"{clean_headline}."
+
+        self.logger.warning(f"🔄 Created fallback summary: '{fallback_summary}' (reason: {reason})")
+
+        # Create default content quality if not provided (for backward compatibility)
+        if content_quality is None:
+            content_quality = {
+                "headline_length": len(headline),
+                "content_length": 0,
+                "content_to_headline_ratio": 0.0,
+                "quality_category": "no_content",
+                "is_content_duplicate": False,
+                "source_reliability": "unknown",
+                "has_meaningful_content": False
             }
+
+        # Create minimal validation for fallback
+        summary_validation = {
+            "quality_score": 0.3,  # Low quality for fallbacks
+            "is_headline_paraphrase": True,
+            "content_utilization": "headline_only",
+            "issues": [reason, "fallback_generation"]
+        }
+
+        return self._create_enhanced_response(
+            fallback_summary, confidence, content_quality, f"fallback_{generation_mode}", summary_validation
+        )
 
     def _calculate_adaptive_temporal_factor(self, published_date: str, section: str) -> float:
         """
@@ -1003,12 +1167,19 @@ Standard: Meaningful impact on community life.""",
 
             config = types.GenerateContentConfig(**config_params)
 
-            # Call the Gemini API (async) using new client pattern
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config
-            )
+            # Call the Gemini API (async) using new client pattern with timeout protection
+            try:
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=self.model,
+                        contents=contents,
+                        config=config
+                    ),
+                    timeout=180.0  # 180 second (3 minute) timeout for Gemini API calls
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(f"Gemini API call timed out after 180 seconds")
+                raise AIServiceError("Gemini API call timed out after 180 seconds")
 
             # Convert response to format expected by our code
             usage_meta = getattr(response, 'usage_metadata', None)
@@ -1368,7 +1539,20 @@ Standard: Meaningful impact on community life.""",
                 except Exception as e:
                     self.logger.error(f"Failed to parse subject tool arguments: {e}")
 
-            # Simple fallback if AI fails
+            # Retry without tool-calling using a simplified generation, then sanitize
+            self.logger.warning("⚠️ AI subject tool-call failed; retrying with simplified prompt")
+            resp2 = await self._call_gemini(messages=messages, max_tokens=512)
+            candidate = self._extract_text_content(resp2)
+            if candidate:
+                subject = candidate.strip().splitlines()[0].strip().strip('"')
+                # Trim to ~80 chars max to keep concise
+                if len(subject) > 80:
+                    subject = subject[:80].rstrip()
+                if subject:
+                    self.logger.info(f"✅ Generated AI subject (retry): {subject}")
+                    return subject
+
+            # Final fallback
             self.logger.warning("❌ AI subject generation failed, using fallback")
             return "Today's Fourier Forecast - Your Daily News Summary"
 
@@ -1679,5 +1863,248 @@ Standard: Meaningful impact on community life.""",
                 success=False,
                 error_message=str(e),
             )
+
+    def _assess_content_quality(self, headline: str, content: str, source: str) -> Dict[str, Any]:
+        """
+        Assess the quality and characteristics of available content for summarization.
+
+        Returns:
+            Dict containing quality metrics and categorization
+        """
+        headline_len = len(headline)
+        content_len = len(content.strip())
+
+        # Calculate content-to-headline ratio
+        content_to_headline_ratio = content_len / max(headline_len, 1)
+
+        # Determine content quality category
+        if content_len == 0:
+            quality_category = "no_content"
+        elif content_len < 50:
+            quality_category = "minimal_content"
+        elif content_len < 200:
+            quality_category = "short_content"
+        elif content_len < 500:
+            quality_category = "medium_content"
+        else:
+            quality_category = "rich_content"
+
+        # Check for content duplication with headline
+        content_lower = content.lower().strip()
+        headline_lower = headline.lower().strip()
+        is_content_duplicate = content_lower == headline_lower or headline_lower in content_lower[:100]
+
+        # Assess source reliability (could be enhanced with source authority scoring)
+        source_reliability = "unknown"
+        high_quality_sources = ["bbc", "reuters", "ap", "bloomberg", "ft", "wsj", "nature", "science"]
+        if any(trusted in source.lower() for trusted in high_quality_sources):
+            source_reliability = "high"
+        elif any(reliable in source.lower() for reliable in ["cnn", "guardian", "times", "post"]):
+            source_reliability = "medium"
+
+        return {
+            "headline_length": headline_len,
+            "content_length": content_len,
+            "content_to_headline_ratio": content_to_headline_ratio,
+            "quality_category": quality_category,
+            "is_content_duplicate": is_content_duplicate,
+            "source_reliability": source_reliability,
+            "has_meaningful_content": content_len > 50 and not is_content_duplicate
+        }
+
+    def _determine_generation_mode(self, headline: str, content: str, content_quality: Dict[str, Any]) -> Tuple[str, str]:
+        """
+        Determine the best generation mode and process content accordingly.
+
+        Returns:
+            Tuple of (generation_mode, processed_content)
+        """
+        content = content.strip()
+
+        # Determine generation mode based on content quality
+        if content_quality["has_meaningful_content"]:
+            if content_quality["content_length"] > 500:
+                mode = "content_based_rich"
+            elif content_quality["content_length"] > 200:
+                mode = "content_based_medium"
+            else:
+                mode = "content_based_short"
+            processed_content = content
+        elif content_quality["content_length"] > 0 and not content_quality["is_content_duplicate"]:
+            mode = "minimal_content"
+            processed_content = content
+        else:
+            mode = "headline_based"
+            processed_content = ""  # Clear content to focus on headline
+
+        return mode, processed_content
+
+    def _generate_mode_specific_prompts(self, generation_mode: str, headline: str, content: str,
+                                      source: str, url: str, section: str, voice: str, prompt_hint: str) -> Tuple[str, str]:
+        """
+        Generate prompts optimized for the specific generation mode.
+        """
+        if generation_mode == "content_based_rich":
+            system_text = (
+                f"You are the Renaissance {voice} editor. You have rich article content. "
+                f"Write exactly one brilliant, factual sentence (25-40 words) that captures the "
+                f"most important insight from this {section} story. Extract the core meaning, "
+                f"not just surface details. No markdown, no bullets, no code. "
+                f"IMPORTANT: You must use the return_summary tool with a summary and confidence score."
+            )
+            user_text = (
+                f"Section: {section}\nVoice: {voice}\nSource: {source}\nURL: {url}\n"
+                f"Headline: {headline}\n\nFull Content:\n{content}\n\n"
+                f"Extract the most significant insight from this content. Look beyond the headline. "
+                f"Constraints: sentence=true, words=25-40. {prompt_hint}"
+            )
+        elif generation_mode in ["content_based_medium", "content_based_short"]:
+            system_text = (
+                f"You are the Renaissance {voice} editor. You have some article content. "
+                f"Write exactly one brilliant, factual sentence (25-40 words) that captures "
+                f"the essence of this {section} story using the available content. "
+                f"No markdown, no bullets, no code. Use clear, vivid language. "
+                f"IMPORTANT: You must use the return_summary tool with a summary and confidence score."
+            )
+            user_text = (
+                f"Section: {section}\nVoice: {voice}\nSource: {source}\nURL: {url}\n"
+                f"Headline: {headline}\n\nContent:\n{content}\n\n"
+                f"Summarize the key insight from this content. "
+                f"Constraints: sentence=true, words=25-40. {prompt_hint}"
+            )
+        elif generation_mode == "minimal_content":
+            system_text = (
+                f"You are the Renaissance {voice} editor. You have minimal content beyond the headline. "
+                f"Write exactly one brilliant sentence (25-40 words) that combines the headline "
+                f"with the additional context to explain what this {section} story means. "
+                f"IMPORTANT: You must use the return_summary tool with a summary and confidence score."
+            )
+            user_text = (
+                f"Section: {section}\nVoice: {voice}\nSource: {source}\n"
+                f"Headline: {headline}\n\nAdditional Context: {content}\n\n"
+                f"Combine the headline with this context to create an insightful summary. "
+                f"Constraints: sentence=true, words=25-40. {prompt_hint}"
+            )
+        else:  # headline_based
+            system_text = (
+                f"You are the Renaissance {voice} editor. From this headline alone, write exactly one brilliant, "
+                f"contextual sentence (25-40 words) that expands on what this story likely means or why it matters. "
+                f"Be insightful and specific to the {section} domain. No markdown, no bullets. "
+                f"IMPORTANT: You must use the return_summary tool with a summary and confidence score."
+            )
+            user_text = (
+                f"Section: {section}\nVoice: {voice}\nHeadline: {headline}\nSource: {source}\n"
+                f"Generate an insightful summary from this headline that explains its significance or context. "
+                f"Make it engaging and informative as if you understand the story behind the headline. "
+                f"Constraints: sentence=true, words=25-40. {prompt_hint}"
+            )
+
+        return system_text, user_text
+
+    def _calculate_final_confidence(self, ai_confidence: float, generation_mode: str,
+                                  content_quality: Dict[str, Any], summary_word_count: int) -> float:
+        """
+        Calculate final confidence score based on generation mode and content quality.
+        """
+        base_confidence = ai_confidence
+
+        # Adjust based on generation mode
+        mode_multipliers = {
+            "content_based_rich": 1.0,      # Highest confidence
+            "content_based_medium": 0.9,    # High confidence
+            "content_based_short": 0.8,     # Good confidence
+            "minimal_content": 0.7,         # Moderate confidence
+            "headline_based": 0.6           # Lower confidence
+        }
+
+        mode_adjusted = base_confidence * mode_multipliers.get(generation_mode, 0.5)
+
+        # Boost for high-quality sources
+        source_boost = 0.1 if content_quality["source_reliability"] == "high" else 0.0
+
+        # Boost for good summary length (20+ words indicates thoughtful expansion)
+        length_boost = 0.1 if summary_word_count >= 20 else 0.0
+
+        # Penalty for content duplication
+        duplication_penalty = -0.2 if content_quality["is_content_duplicate"] else 0.0
+
+        final_confidence = min(1.0, max(0.1, mode_adjusted + source_boost + length_boost + duplication_penalty))
+
+        return final_confidence
+
+    def _validate_summary_quality(self, summary: str, headline: str, generation_mode: str) -> Dict[str, Any]:
+        """
+        Validate the quality of the generated summary and detect potential issues.
+        """
+        summary_lower = summary.lower().strip()
+        headline_lower = headline.lower().strip()
+
+        # Check if summary is just a paraphrase of the headline
+        summary_words = set(summary_lower.split())
+        headline_words = set(headline_lower.split())
+
+        # Calculate word overlap
+        common_words = summary_words & headline_words
+        headline_coverage = len(common_words) / max(len(headline_words), 1)
+
+        is_headline_paraphrase = headline_coverage > 0.7 or summary_lower.startswith(headline_lower[:20])
+
+        # Determine content utilization
+        if generation_mode.startswith("content_based"):
+            content_utilization = "content_based"
+        elif generation_mode == "minimal_content":
+            content_utilization = "minimal_content"
+        else:
+            content_utilization = "headline_only"
+
+        # Calculate quality score
+        quality_score = 0.8  # Start with good score
+
+        # Deduct for headline paraphrasing
+        if is_headline_paraphrase:
+            quality_score -= 0.3
+
+        # Deduct for headline-only generation
+        if content_utilization == "headline_only":
+            quality_score -= 0.2
+
+        # Boost for content-based generation
+        if content_utilization == "content_based":
+            quality_score += 0.2
+
+        quality_score = max(0.0, min(1.0, quality_score))
+
+        # Identify issues
+        issues = []
+        if is_headline_paraphrase:
+            issues.append("headline_paraphrase")
+        if content_utilization == "headline_only":
+            issues.append("no_content_used")
+        if len(summary.split()) < 15:
+            issues.append("too_short")
+
+        return {
+            "quality_score": quality_score,
+            "is_headline_paraphrase": is_headline_paraphrase,
+            "headline_coverage": headline_coverage,
+            "content_utilization": content_utilization,
+            "issues": issues,
+            "word_count": len(summary.split())
+        }
+
+    def _log_content_quality_stats(self, content_quality: Dict[str, Any], generation_mode: str,
+                                 source: str, section: str) -> None:
+        """
+        Log content quality statistics for tracking and analysis.
+        """
+        self.logger.info(f"📈 CONTENT_QUALITY_STATS: "
+                        f"source={source[:20]} "
+                        f"section={section} "
+                        f"mode={generation_mode} "
+                        f"category={content_quality['quality_category']} "
+                        f"content_len={content_quality['content_length']} "
+                        f"ratio={content_quality['content_to_headline_ratio']:.1f} "
+                        f"reliable_source={content_quality['source_reliability']} "
+                        f"has_content={content_quality['has_meaningful_content']}")
 
 
