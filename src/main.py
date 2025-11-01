@@ -53,7 +53,7 @@ class PipelineConfig:
     # Timing
     execution_time: time  # 5:00 AM ET
     delivery_time: time   # 5:30 AM ET
-    max_execution_minutes: int = 45  # Extended time for rate-limited LLMLayer cascading calls
+    max_execution_minutes: int = 45  # Extended time for rate-limited AI service calls
 
     # Paths
     database_path: str = "data/newsletter.db"
@@ -375,8 +375,11 @@ class MainPipeline:
 
     async def _fetch_content(self) -> Dict[Any, Any]:
         aggregator: ContentAggregator = self.services['aggregator']
-        content = await aggregator.fetch_all_content()
-        
+
+        # Use aggregator as async context manager for proper lifecycle management
+        async with aggregator:
+            content = await aggregator.fetch_all_content()
+
         # Debug: Log what sections were fetched
         self.logger.info(f"Fetched sections: {list(content.keys())}")
         for section, items in content.items():
@@ -466,7 +469,7 @@ class MainPipeline:
                     'url': getattr(it, 'url', None),
                     'headline': getattr(it, 'headline', None),
                     'title': getattr(it, 'headline', None),
-                    'content': getattr(it, 'content', ''),
+                    'summary_text': getattr(it, 'summary_text', getattr(it, 'content', '')),
                     'source': getattr(it, 'source', ''),
                     'published': getattr(it, 'published_date', datetime.now()).isoformat(),
                 })
@@ -480,13 +483,20 @@ class MainPipeline:
         # Rank and select non-Scripture content
         ranked = await aggregator.rank_all_content(normalized)
         selected = await aggregator.select_top_items(ranked)
-        
+
+        # Enforce per-section minimums using aggregator policies (may top-up)
+        try:
+            selected = aggregator._enforce_minimums(selected, ranked)
+            self.logger.info("Applied post-selection enforcement to meet per-section minimums")
+        except Exception as e:
+            self.logger.warning(f"Post-selection enforcement failed: {e}")
+
         # Add Scripture back - it bypasses ranking/selection completely
         if scripture_items:
             # Scripture items are already the right structure from fetch
             selected['scripture'] = scripture_items
             self.logger.info(f"Scripture: {len(scripture_items)} items added (bypassed ranking)")
-        
+
         return selected
 
     async def _generate_summaries(self, content: Dict[Any, Any]) -> Dict[Any, Any]:
@@ -607,6 +617,7 @@ class MainPipeline:
         return await self.services['email'].send_newsletter(html, subject)
 
     async def _update_cache(self, content: Dict[Any, Any]) -> None:
+        from datetime import timezone
         cache: CacheService = self.services['cache']
         # Only cache SELECTED items with adaptive expiry based on score
         # High-scoring items get shorter cache periods (can reappear sooner)
@@ -615,7 +626,15 @@ class MainPipeline:
                 try:
                     # Get the item's score for adaptive caching
                     score = getattr(it, 'total_score', 5.0)  # Default to middle score if not available
-                    
+
+                    # Get published_date and ensure it's timezone-aware
+                    pub_date = getattr(it, 'published_date', None)
+                    if pub_date is None:
+                        pub_date = datetime.now(timezone.utc)
+                    elif pub_date.tzinfo is None:
+                        # Make timezone-aware if naive
+                        pub_date = pub_date.replace(tzinfo=timezone.utc)
+
                     cache_item = CacheContentItem(
                         id=getattr(it, 'id', f'{section}:unknown'),
                         source=getattr(it, 'source', ''),
@@ -623,7 +642,7 @@ class MainPipeline:
                         headline=getattr(it, 'headline', ''),
                         summary_text=getattr(it, 'summary_text', ''),
                         url=getattr(it, 'url', ''),
-                        published_date=getattr(it, 'published_date', datetime.now()),
+                        published_date=pub_date,
                         metadata={},
                         embedding=None,
                         is_follow_up=False,
@@ -632,7 +651,7 @@ class MainPipeline:
                     )
                     # Use adaptive caching for selected items
                     await cache.add_selected_item(cache_item, score)
-                    
+
                     # Log for research papers
                     if section == 'research_papers':
                         self.logger.info(f"Cached selected research paper with score {score:.1f}")

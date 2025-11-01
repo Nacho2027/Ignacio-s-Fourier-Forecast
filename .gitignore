@@ -10,6 +10,16 @@ Fourier.pem.pub
 *_internal.md
 *_private.md
 
+# All documentation except README
+InternalDocs/
+docs/
+*.md
+!README.md
+!ARCHITECTURE.md
+!LICENSE.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+
 # Development tool configurations
 .cursor/
 .vscode/
@@ -101,6 +111,7 @@ log/
 *.err
 
 # Test files and outputs
+tests/
 test_*.py
 test_*.txt
 test_*.json

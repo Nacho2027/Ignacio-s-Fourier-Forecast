@@ -13,8 +13,8 @@ set -e
 
 # Configuration - modify these for your deployment
 SERVER_USER="${DEPLOY_USER:-ubuntu}"
-SERVER_HOST="${DEPLOY_HOST:-your-server.com}"
-SSH_KEY="${SSH_KEY:-deploy-key.pem}"
+SERVER_HOST="${DEPLOY_HOST:-18.221.135.150}"
+SSH_KEY="${SSH_KEY:-Fourier.pem}"
 PROJECT_DIR="${REMOTE_PROJECT_DIR:-/opt/fourier-forecast}"
 
 # Colors for output
@@ -52,19 +52,39 @@ rsync -avz --exclude='.git' \
 
 echo -e "${YELLOW}Restarting service on production server...${NC}"
 
-# Restart the service on the remote server
+# Setup Camoufox environment and restart service on the remote server
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" << EOF
     cd $PROJECT_DIR
+
+    # Install/update Python dependencies
+    echo "📦 Installing Python dependencies..."
+    python3 -m pip install -r requirements.txt --user
+
+    # Setup Camoufox environment if not already done
+    if [ ! -f ".camoufox_installed" ]; then
+        echo "🦊 Setting up Camoufox environment..."
+        chmod +x scripts/setup_camoufox_environment.sh
+        ./scripts/setup_camoufox_environment.sh
+
+        # Mark as installed
+        touch .camoufox_installed
+        echo "✅ Camoufox environment setup completed"
+    else
+        echo "✅ Camoufox environment already configured"
+    fi
+
+    # Restart the service
+    echo "🔄 Restarting fourier-forecast service..."
     sudo systemctl restart fourier-forecast
-    sleep 3
-    
+    sleep 5
+
     # Check if service is running
     if sudo systemctl is-active --quiet fourier-forecast; then
-        echo "✅ Service restarted successfully"
+        echo "✅ Service restarted successfully with Camoufox support"
         sudo systemctl status fourier-forecast --no-pager -l | head -20
     else
         echo "❌ Service failed to start"
-        sudo journalctl -u fourier-forecast -n 20 --no-pager
+        sudo journalctl -u fourier-forecast -n 30 --no-pager
         exit 1
     fi
 EOF

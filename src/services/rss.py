@@ -123,22 +123,14 @@ class RSSService:
         self.logger.info(f"Initialized RSS service with {len(self.feeds)} feeds across {len(self.section_feeds)} sections")
 
     def _load_all_feed_configs(self) -> Dict[str, FeedConfig]:
-        """Load comprehensive feed configurations from CSV and hardcoded configs."""
-        configs = {}
-        
-        # Load spiritual/scripture feeds (maintain existing functionality)
-        configs.update(self._init_spiritual_feeds())
-        
-        # Load newsletter feeds from RSS.csv
-        csv_path = "/code/InternalDocs/RSS.csv"
-        if os.path.exists(csv_path):
-            configs.update(self._load_feeds_from_csv(csv_path))
-        else:
-            self.logger.warning(f"RSS.csv not found at {csv_path}, using intelligent fallback configuration")
-            configs.update(self._init_intelligent_fallback_feeds())
-            
+        """Load only Scripture/Spiritual feed configurations (news now via AI)."""
+        # Initialize all legacy configs, but filter to scripture-only
+        all_configs = self._init_spiritual_feeds()
+        configs = {name: cfg for name, cfg in all_configs.items() if getattr(cfg, 'section', None) == 'scripture'}
+        if not configs:
+            self.logger.warning("No scripture feeds found in configuration; please check rss.py")
         return configs
-        
+
     def _init_spiritual_feeds(self) -> Dict[str, FeedConfig]:
         """Initialize spiritual/scripture feed configurations (existing functionality)."""
         return {
@@ -1004,14 +996,67 @@ class RSSService:
             author = getattr(entry, "author", None)
             categories = [t.term for t in getattr(entry, "tags", [])] if getattr(entry, "tags", None) else []
             content_value: Optional[str] = None
+
+            # Enhanced content extraction with multiple sources and prioritization
+            content_candidates = []
+
+            # 1. Try multiple entry.content items (not just first one)
             if getattr(entry, "content", None):
-                # entry.content is a list of dicts
                 try:
-                    content_value = entry.content[0].value
+                    for content_item in entry.content:
+                        if hasattr(content_item, 'value') and content_item.value:
+                            # Prioritize HTML content over plain text
+                            content_type = getattr(content_item, 'type', 'text/plain')
+                            priority = 100 if 'html' in content_type else 50
+                            content_candidates.append((content_item.value, priority, f"content[{content_type}]"))
                 except Exception:  # noqa: BLE001
-                    content_value = None
-            elif getattr(entry, "summary", None):
-                content_value = entry.summary
+                    pass
+
+            # 2. Try content:encoded (common in WordPress feeds)
+            if hasattr(entry, 'content_encoded') and entry.content_encoded:
+                content_candidates.append((entry.content_encoded, 90, "content:encoded"))
+
+            # 3. Try subtitle (often contains rich descriptions)
+            if hasattr(entry, 'subtitle') and entry.subtitle:
+                content_candidates.append((entry.subtitle, 80, "subtitle"))
+
+            # 4. Try media descriptions (for feeds with embedded media)
+            if hasattr(entry, 'media_content') and entry.media_content:
+                for media in entry.media_content:
+                    if hasattr(media, 'description') and media.description:
+                        content_candidates.append((media.description, 70, "media:description"))
+
+            # 5. Try content_detail (alternative content field)
+            if hasattr(entry, 'content_detail') and entry.content_detail:
+                content_candidates.append((entry.content_detail, 60, "content_detail"))
+
+            # 6. Try summary with higher priority if substantial
+            if getattr(entry, "summary", None):
+                summary_len = len(entry.summary.strip())
+                priority = 85 if summary_len > 200 else 40  # Boost priority for substantial summaries
+                content_candidates.append((entry.summary, priority, f"summary[{summary_len}chars]"))
+
+            # 7. Try description as fallback
+            if description:
+                desc_len = len(description.strip())
+                priority = 75 if desc_len > 150 else 30  # Boost priority for substantial descriptions
+                content_candidates.append((description, priority, f"description[{desc_len}chars]"))
+
+            # 8. Try additional namespace fields
+            for field_name in ['excerpt_encoded', 'description_encoded', 'body']:
+                if hasattr(entry, field_name):
+                    field_value = getattr(entry, field_name)
+                    if field_value:
+                        content_candidates.append((field_value, 50, field_name))
+
+            # Select best content based on priority and length
+            if content_candidates:
+                # Sort by priority (descending), then by content length (descending)
+                content_candidates.sort(key=lambda x: (x[1], len(str(x[0]).strip())), reverse=True)
+                content_value = content_candidates[0][0]
+                self.logger.debug(f"Selected content from {content_candidates[0][2]} (priority: {content_candidates[0][1]})")
+            else:
+                content_value = None
 
             # Published date
             published_raw = getattr(entry, "published", getattr(entry, "updated", ""))
@@ -1304,9 +1349,21 @@ class RSSService:
         content_score = self._calculate_content_score(item, section)
         priority_score = source_priority + content_score
         
-        # Extract clean summary
+        # Extract clean summary with enhanced processing
         summary = self._extract_clean_summary(item)
-        
+
+        # Validate content quality and add debugging info
+        content_quality = self._validate_content_quality(summary, item.title)
+
+        # Log content extraction results for debugging
+        self.logger.debug(
+            f"Content extracted for '{item.title[:50]}...': "
+            f"length={content_quality['content_length']}, "
+            f"words={content_quality['word_count']}, "
+            f"quality={content_quality['quality_score']}, "
+            f"issues={content_quality['issues']}"
+        )
+
         return {
             'headline': item.title,
             'url': item.link,
@@ -1361,27 +1418,213 @@ class RSSService:
         return score
         
     def _extract_clean_summary(self, item: RSSItem) -> str:
-        """Extract and clean summary text from RSS item."""
+        """Extract and clean summary text from RSS item with enhanced content processing."""
         # Prefer full content over description
         text = item.content or item.description or ''
-        
-        # Remove HTML tags
+
+        # If we still have no meaningful text, this will be handled by AI fallback
+        if not text or len(text.strip()) < 10:
+            return text.strip()
+
+        # Enhanced HTML processing for better content extraction
         if '<' in text and '>' in text:
             soup = BeautifulSoup(text, 'html.parser')
-            text = soup.get_text(' ', strip=True)
-            
-        # Clean up common RSS artifacts
+
+            # Remove unwanted elements but preserve content-rich ones
+            for element in soup(['script', 'style', 'nav', 'footer', 'aside', 'header', 'menu']):
+                element.decompose()
+
+            # Extract and preserve important content structures
+            content_parts = []
+
+            # Extract main paragraphs first
+            paragraphs = soup.find_all(['p', 'div'], class_=lambda x: x and any(
+                cls in (x or '').lower() for cls in ['content', 'body', 'text', 'summary', 'excerpt']
+            ))
+
+            if not paragraphs:
+                paragraphs = soup.find_all('p')
+
+            for p in paragraphs[:3]:  # Limit to first 3 paragraphs
+                p_text = p.get_text(' ', strip=True)
+                if len(p_text) > 20:  # Only include substantial paragraphs
+                    content_parts.append(p_text)
+
+            # If no good paragraphs, extract from other elements
+            if not content_parts:
+                # Try lists (often contain key points)
+                for ul in soup.find_all(['ul', 'ol'])[:2]:
+                    items = [li.get_text(' ', strip=True) for li in ul.find_all('li')[:3]]
+                    if items:
+                        content_parts.extend(items)
+
+                # Try blockquotes (often contain key insights)
+                for quote in soup.find_all('blockquote')[:2]:
+                    quote_text = quote.get_text(' ', strip=True)
+                    if len(quote_text) > 15:
+                        content_parts.append(f'"{quote_text}"')
+
+                # Fallback to general text extraction
+                if not content_parts:
+                    text = soup.get_text(' ', strip=True)
+                else:
+                    text = ' '.join(content_parts)
+            else:
+                text = ' '.join(content_parts)
+
+        # Enhanced cleaning with better pattern recognition
         text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
-        text = re.sub(r'Continue reading.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Read more.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\[.*?\]', '', text)  # Remove bracketed content
-        
-        # Truncate to reasonable length
-        if len(text) > 300:
-            text = text[:297] + '...'
-            
-        return text.strip()
-        
+
+        # Remove common RSS noise patterns
+        noise_patterns = [
+            r'Continue reading.*',
+            r'Read more.*',
+            r'Click here.*',
+            r'The post .* appeared first on .*',
+            r'Originally published .*',
+            r'View original.*',
+            r'Full story.*',
+            r'\[.*?\]',  # Remove bracketed content
+            r'Image:.*?(?=\.|$)',
+            r'Photo:.*?(?=\.|$)',
+            r'Source:.*?(?=\.|$)',
+            r'Tags?:.*?(?=\.|$)',
+            r'Categories?:.*?(?=\.|$)',
+        ]
+
+        for pattern in noise_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+        # Remove subscription/engagement prompts
+        engagement_patterns = [
+            r'Sign up.*?newsletter.*?(?=\.|$)',
+            r'Subscribe.*?(?=\.|$)',
+            r'Follow us.*?(?=\.|$)',
+            r'Like us.*?(?=\.|$)',
+            r'Share this.*?(?=\.|$)',
+            r'Leave a comment.*?(?=\.|$)',
+        ]
+
+        for pattern in engagement_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+        # Clean up punctuation and spacing
+        text = re.sub(r'\.{2,}', '.', text)
+        text = re.sub(r',{2,}', ',', text)
+        text = re.sub(r'\s*,\s*,\s*', ', ', text)  # Fix comma spacing
+        text = re.sub(r'\s*\.\s*\.\s*', '. ', text)  # Fix period spacing
+
+        # Enhanced truncation with smarter boundary detection
+        max_length = 1000  # Increased from 500 for better AI context
+
+        if len(text) > max_length:
+            # Try to cut at sentence boundary first
+            truncation_point = max_length - 3  # Leave room for ellipsis
+
+            # Find the last sentence ending before the limit
+            sentence_endings = [m.end() for m in re.finditer(r'[.!?]\s+', text[:truncation_point])]
+
+            if sentence_endings:
+                text = text[:sentence_endings[-1]]
+            else:
+                # Fallback to word boundary
+                word_boundary = text.rfind(' ', 0, truncation_point)
+                if word_boundary > truncation_point * 0.8:  # Don't cut too short
+                    text = text[:word_boundary] + '...'
+                else:
+                    text = text[:truncation_point] + '...'
+
+        # Final cleanup
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # Remove leading/trailing punctuation artifacts
+        text = re.sub(r'^[^\w"\']*', '', text)
+        text = re.sub(r'[^\w.!?"\']$', '', text)
+
+        return text
+
+    def _validate_content_quality(self, content: str, title: str) -> Dict[str, Any]:
+        """Validate and score content quality for AI processing."""
+        if not content:
+            return {"quality_score": 0, "issues": ["empty_content"], "content_length": 0}
+
+        content_clean = content.strip()
+        content_length = len(content_clean)
+        word_count = len(content_clean.split())
+
+        quality_score = 0
+        issues = []
+
+        # Length scoring
+        if content_length > 200:
+            quality_score += 30
+        elif content_length > 100:
+            quality_score += 20
+        elif content_length > 50:
+            quality_score += 10
+        else:
+            issues.append("very_short_content")
+
+        # Word count scoring
+        if word_count > 30:
+            quality_score += 20
+        elif word_count > 15:
+            quality_score += 10
+        elif word_count < 5:
+            issues.append("minimal_word_count")
+
+        # Content vs title similarity (avoid duplicates)
+        title_words = set(title.lower().split())
+        content_words = set(content_clean.lower().split())
+        overlap = len(title_words.intersection(content_words)) / max(len(title_words), 1)
+
+        if overlap > 0.8:
+            issues.append("mostly_title_repetition")
+            quality_score -= 20
+        elif overlap < 0.3:
+            quality_score += 15  # Good unique content
+
+        # Information density
+        sentences = content_clean.count('.') + content_clean.count('!') + content_clean.count('?')
+        if sentences > 0:
+            avg_words_per_sentence = word_count / sentences
+            if 10 <= avg_words_per_sentence <= 25:  # Good sentence length
+                quality_score += 10
+            elif avg_words_per_sentence > 40:
+                issues.append("very_long_sentences")
+
+        # Detect common low-quality patterns
+        low_quality_indicators = [
+            'loading...', 'javascript required', 'enable javascript',
+            'cookie notice', 'privacy policy', 'terms of service',
+            'advertisement', 'sponsored content'
+        ]
+
+        content_lower = content_clean.lower()
+        for indicator in low_quality_indicators:
+            if indicator in content_lower:
+                issues.append(f"contains_{indicator.replace(' ', '_')}")
+                quality_score -= 15
+
+        # Boost for substantive content patterns
+        quality_indicators = [
+            'according to', 'research shows', 'study found', 'data reveals',
+            'experts say', 'analysis', 'investigation', 'reported'
+        ]
+
+        for indicator in quality_indicators:
+            if indicator in content_lower:
+                quality_score += 5
+
+        return {
+            "quality_score": max(0, min(100, quality_score)),
+            "content_length": content_length,
+            "word_count": word_count,
+            "sentence_count": sentences,
+            "title_overlap": overlap,
+            "issues": issues
+        }
+
     def _extract_source_name(self, feed_url: str) -> str:
         """Extract clean source name from feed URL."""
         # Check if we have a configured name for this URL
